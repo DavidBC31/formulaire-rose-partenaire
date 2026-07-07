@@ -25,14 +25,12 @@ export function AdminDashboard({
   prestataires,
   planDocument,
   mailConfigured,
-  authDisabled,
   driveConfigured,
   sheetUrl,
 }: {
   prestataires: Prestataire[];
   planDocument: PlanDocument | null;
   mailConfigured: boolean;
-  authDisabled: boolean;
   driveConfigured: boolean;
   sheetUrl: string | null;
 }) {
@@ -138,11 +136,9 @@ export function AdminDashboard({
         <h1 className="display text-3xl sm:text-4xl">
           Suivi <span className="text-rose-vif">prestataires</span>
         </h1>
-        {!authDisabled && (
-          <button className="btn-outline btn-sm" onClick={deconnexion}>
-            Déconnexion
-          </button>
-        )}
+        <button className="btn-outline btn-sm" onClick={deconnexion}>
+          Déconnexion
+        </button>
       </div>
 
       {(!mailConfigured || !driveConfigured) && (

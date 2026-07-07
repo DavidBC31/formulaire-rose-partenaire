@@ -43,8 +43,9 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-- Admin : `http://localhost:3000/admin` — **accès libre** tant que
-  `ADMIN_PASSWORD` n'est pas défini.
+- Admin : `http://localhost:3000/admin` — protégé par `ADMIN_PASSWORD`
+  (**obligatoire** : sans lui l'admin est verrouillé). Le formulaire
+  prestataire reste public.
 - Sans SMTP configuré, les emails sont **simulés** (loggés dans la console
   serveur, personne ne reçoit rien) : un bandeau le rappelle dans l'admin et
   le bouton « Email de test » permet de vérifier la configuration réelle.
@@ -68,9 +69,9 @@ Variables d'environnement — voir [.env.example](.env.example) :
 
 | Variable | Rôle |
 | --- | --- |
-| `ADMIN_PASSWORD` | Optionnel : protège le tableau de suivi (vide = accès libre) |
+| `ADMIN_PASSWORD` | **Obligatoire** : protège le tableau de suivi (absent = admin verrouillé) |
 | `APP_URL` | URL publique (liens des emails), ex. https://prestataires.rosefestival.fr |
-| `SMTP_HOST/PORT/USER/PASS` | Envoi réel — boîte OVH : `ssl0.ovh.net:465` |
+| `SMTP_HOST/PORT/USER/PASS` | Envoi réel — boîte Google Workspace : `smtp.gmail.com:465` + **mot de passe d'application** |
 | `MAIL_FROM` | Adresse d'expédition (défaut : administration@rosefestival.fr) |
 | `GOOGLE_SERVICE_ACCOUNT_KEY` | Clé JSON (base64) du compte de service Drive+Sheets |
 | `GOOGLE_DRIVE_FOLDER_ID` | Dossier Drive racine du classement par prestataire |
@@ -98,10 +99,11 @@ L'app est un serveur Next.js : l'hébergement mutualisé OVH ne peut pas
 l'exécuter. Le schéma prévu : déployer sur **Vercel** (crons + Blob inclus)
 et créer dans la zone DNS OVH un enregistrement `CNAME`
 `prestataires.rosefestival.fr → cname.vercel-dns.com` (le sous-domaine reste
-sous rosefestival.fr). Les emails partent de la boîte OVH
-`administration@rosefestival.fr` via SMTP (`ssl0.ovh.net:465`), indépendamment
-de l'hébergement web. Vérifier que le cron de `vercel.json` (`0 7 * * 1` UTC =
-lundi 9h Paris) est actif après déploiement.
+sous rosefestival.fr). Attention : seul le domaine est chez OVH — la
+messagerie, elle, est chez **Google Workspace** (MX `smtp.google.com`), d'où
+le SMTP `smtp.gmail.com` avec mot de passe d'application. Vérifier que le
+cron de `vercel.json` (`0 7 * * 1` UTC = lundi 9h Paris) est actif après
+déploiement.
 
 ## Architecture
 

@@ -7,8 +7,9 @@ function password(): string {
   return process.env.ADMIN_PASSWORD || "";
 }
 
-/** Sans ADMIN_PASSWORD défini, l'admin est en accès libre (choix recette). */
-export function authRequired(): boolean {
+/** L'admin exige ADMIN_PASSWORD : sans lui, l'accès est verrouillé
+ * (jamais ouvert). Le formulaire public, lui, reste sans connexion. */
+export function authConfigured(): boolean {
   return !!password();
 }
 
@@ -19,14 +20,14 @@ export function sessionToken(): string {
 }
 
 export function checkPassword(pw: string): boolean {
-  if (!authRequired()) return true;
+  if (!authConfigured()) return false;
   const a = Buffer.from(pw);
   const b = Buffer.from(password());
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export async function isAdmin(): Promise<boolean> {
-  if (!authRequired()) return true;
+  if (!authConfigured()) return false;
   const store = await cookies();
   const val = store.get(COOKIE_NAME)?.value;
   return !!val && val === sessionToken();
