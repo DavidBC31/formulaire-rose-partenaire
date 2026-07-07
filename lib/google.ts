@@ -53,22 +53,29 @@ const b64url = (b: Buffer | string) =>
     .replace(/\//g, "_")
     .replace(/=+$/, "");
 
-let tokenCache: { token: string; expires: number } | null = null;
+const tokenCache = new Map<string, { token: string; expires: number }>();
 
-async function accessToken(): Promise<string> {
+/**
+ * Jeton d'accès du compte de service. `subject` = adresse à impersonner via
+ * la délégation au niveau du domaine (envoi Gmail en tant qu'administration@,
+ * sans mot de passe ni MFA — la délégation s'accorde dans la console admin).
+ */
+async function accessTokenFor(scope: string, subject?: string): Promise<string> {
   const sa = serviceAccount();
   if (!sa) throw new Error("Compte de service Google non configuré");
-  if (tokenCache && Date.now() < tokenCache.expires - 60_000) return tokenCache.token;
+  const key = `${scope}|${subject || ""}`;
+  const cached = tokenCache.get(key);
+  if (cached && Date.now() < cached.expires - 60_000) return cached.token;
 
   const now = Math.floor(Date.now() / 1000);
   const unsigned = `${b64url(JSON.stringify({ alg: "RS256", typ: "JWT" }))}.${b64url(
     JSON.stringify({
       iss: sa.client_email,
-      scope:
-        "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets",
+      scope,
       aud: "https://oauth2.googleapis.com/token",
       iat: now,
       exp: now + 3600,
+      ...(subject ? { sub: subject } : {}),
     })
   )}`;
   const signature = createSign("RSA-SHA256").update(unsigned).sign(sa.private_key);
@@ -84,8 +91,55 @@ async function accessToken(): Promise<string> {
   const data = await res.json();
   if (!res.ok)
     throw new Error(`Auth Google : ${data.error_description || data.error}`);
-  tokenCache = { token: data.access_token, expires: Date.now() + data.expires_in * 1000 };
-  return tokenCache.token;
+  tokenCache.set(key, {
+    token: data.access_token,
+    expires: Date.now() + data.expires_in * 1000,
+  });
+  return data.access_token;
+}
+
+const accessToken = () =>
+  accessTokenFor(
+    "https://www.googleapis.com/auth/drive https://www.googleapis.com/auth/spreadsheets"
+  );
+
+/** Envoi Gmail configuré = compte de service + adresse déléguée (GMAIL_DELEGATE). */
+export function isGmailConfigured(): boolean {
+  return !!serviceAccount() && !!process.env.GMAIL_DELEGATE;
+}
+
+/** Envoie un email via l'API Gmail en tant que l'adresse déléguée. */
+export async function sendViaGmail(opts: {
+  to: string;
+  subject: string;
+  html: string;
+  fromName?: string;
+}): Promise<void> {
+  const delegate = process.env.GMAIL_DELEGATE!;
+  const token = await accessTokenFor(
+    "https://www.googleapis.com/auth/gmail.send",
+    delegate
+  );
+  const message = [
+    `From: "${opts.fromName || "Rose Festival"}" <${delegate}>`,
+    `To: ${opts.to}`,
+    `Subject: =?UTF-8?B?${Buffer.from(opts.subject).toString("base64")}?=`,
+    "MIME-Version: 1.0",
+    'Content-Type: text/html; charset="UTF-8"',
+    "Content-Transfer-Encoding: base64",
+    "",
+    Buffer.from(opts.html).toString("base64"),
+  ].join("\r\n");
+  const res = await fetch(
+    "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+    {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ raw: b64url(Buffer.from(message)) }),
+    }
+  );
+  if (!res.ok)
+    throw new Error(`Gmail API ${res.status} : ${(await res.text()).slice(0, 300)}`);
 }
 
 async function gfetch(url: string, init?: RequestInit): Promise<Response> {

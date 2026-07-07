@@ -71,18 +71,20 @@ Variables d'environnement — voir [.env.example](.env.example) :
 | --- | --- |
 | `ADMIN_PASSWORD` | **Obligatoire** : protège le tableau de suivi (absent = admin verrouillé) |
 | `APP_URL` | URL publique (liens des emails), ex. https://prestataires.rosefestival.fr |
-| `SMTP_HOST/PORT/USER/PASS` | Envoi réel — boîte Google Workspace : `smtp.gmail.com:465` + **mot de passe d'application** |
+| `GMAIL_DELEGATE` | Envoi réel via API Gmail : adresse impersonnée par le compte de service (délégation domaine, **sans mot de passe ni MFA**) |
 | `MAIL_FROM` | Adresse d'expédition (défaut : administration@rosefestival.fr) |
-| `GOOGLE_SERVICE_ACCOUNT_KEY` | Clé JSON (base64) du compte de service Drive+Sheets |
+| `SMTP_HOST/PORT/USER/PASS` | Alternative SMTP classique (inutile si `GMAIL_DELEGATE` actif) |
+| `GOOGLE_SERVICE_ACCOUNT_KEY` | Clé JSON (base64) du compte de service Drive+Sheets+Gmail |
 | `GOOGLE_DRIVE_FOLDER_ID` | Dossier Drive racine du classement par prestataire |
 | `GOOGLE_SHEET_ID` | Google Sheet de suivi synchronisé |
 | `BLOB_READ_WRITE_TOKEN` | Stockage persistant Vercel Blob (lier un store au projet) |
 | `CRON_SECRET` | Protège `/api/cron/relances` (Vercel l'envoie automatiquement) |
 
-### Connecter le Drive et le Sheet
+### Connecter le Drive, le Sheet et l'envoi d'emails (un seul compte de service)
 
 1. [console.cloud.google.com](https://console.cloud.google.com) → créer (ou
-   réutiliser) un projet → activer les API **Google Drive** et **Google Sheets**.
+   réutiliser) un projet → activer les API **Google Drive**, **Google Sheets**
+   et **Gmail**.
 2. IAM → Comptes de service → créer → onglet Clés → **nouvelle clé JSON**.
 3. Encoder la clé : `base64 -i cle.json | pbcopy` → coller dans
    `GOOGLE_SERVICE_ACCOUNT_KEY`.
@@ -92,6 +94,16 @@ Variables d'environnement — voir [.env.example](.env.example) :
 5. Renseigner `GOOGLE_DRIVE_FOLDER_ID` et `GOOGLE_SHEET_ID` (ids visibles dans
    les URLs) — le Sheet est réécrit à chaque changement, ne pas y saisir de
    données à la main (utiliser un 2ᵉ onglet si besoin).
+6. **Envoi d'emails sans mot de passe ni MFA** (la validation en 2 étapes est
+   désactivée sur le domaine, les mots de passe d'application sont donc
+   impossibles) : [admin.google.com](https://admin.google.com) → Sécurité →
+   Contrôle des accès et des données → Commandes API → **Délégation au niveau
+   du domaine** → Ajouter : l'**ID client** numérique du compte de service +
+   le champ d'application `https://www.googleapis.com/auth/gmail.send`.
+   Renseigner ensuite `GMAIL_DELEGATE=administration@rosefestival.fr` :
+   l'app envoie via l'API Gmail en tant que cette adresse. La délégation est
+   limitée au seul scope « envoyer un mail » — le compte de service ne peut
+   ni lire ni administrer quoi que ce soit d'autre.
 
 ### Hébergement (domaine rosefestival.fr chez OVH)
 

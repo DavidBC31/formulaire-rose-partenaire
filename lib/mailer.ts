@@ -1,9 +1,13 @@
 import type { Prestataire } from "./types";
+import { isGmailConfigured, sendViaGmail } from "./google";
 
 /**
  * Tous les emails partent de administration@rosefestival.fr (décision actée CDC).
- * Sans configuration SMTP, le mailer fonctionne en mode "dry-run" :
- * l'email est loggé mais pas envoyé (utile en dev / recette).
+ * Voies d'envoi, par ordre de priorité :
+ * 1. API Gmail via compte de service + délégation domaine (GMAIL_DELEGATE) —
+ *    aucun mot de passe, compatible avec la MFA désactivée sur le Workspace ;
+ * 2. SMTP classique (SMTP_HOST/USER/PASS) ;
+ * 3. sinon "dry-run" : l'email est loggé mais pas envoyé (dev / recette).
  */
 
 export const MAIL_FROM =
@@ -17,7 +21,7 @@ export function appUrl(): string {
 }
 
 export function isMailConfigured(): boolean {
-  return !!process.env.SMTP_HOST;
+  return isGmailConfigured() || !!process.env.SMTP_HOST;
 }
 
 export async function sendMail(opts: {
@@ -25,6 +29,10 @@ export async function sendMail(opts: {
   subject: string;
   html: string;
 }): Promise<{ sent: boolean; dryRun: boolean }> {
+  if (isGmailConfigured()) {
+    await sendViaGmail({ to: opts.to, subject: opts.subject, html: opts.html });
+    return { sent: true, dryRun: false };
+  }
   if (!isMailConfigured()) {
     console.log(
       `[MAIL DRY-RUN] de:${MAIL_FROM} à:${opts.to} sujet:"${opts.subject}"`
