@@ -17,10 +17,12 @@ export function FormulaireCollecte({
   token,
   societeInvitee,
   dejaSoumis,
+  planDisponible,
 }: {
   token?: string;
   societeInvitee?: string;
   dejaSoumis?: boolean;
+  planDisponible?: boolean;
 }) {
   const [societe, setSociete] = useState(societeInvitee || "");
   const [contact, setContact] = useState({ prenom: "", nom: "", email: "", telephone: "" });
@@ -32,7 +34,11 @@ export function FormulaireCollecte({
   const [fastchecks, setFastchecks] = useState<Partial<Record<DocKey, FastcheckResult>>>({});
   const [envoiEnCours, setEnvoiEnCours] = useState(false);
   const [erreur, setErreur] = useState("");
-  const [termine, setTermine] = useState<null | { fastcheckOk: boolean }>(null);
+  const [termine, setTermine] = useState<null | {
+    fastcheckOk: boolean;
+    token: string;
+    emailsSimules: boolean;
+  }>(null);
 
   function choisirFichier(doc: DocKey, file: File | undefined) {
     if (!file) return;
@@ -109,7 +115,11 @@ export function FormulaireCollecte({
       });
       const finData = await fin.json();
       if (!fin.ok) throw new Error(finData.error || "Erreur lors de la finalisation");
-      setTermine({ fastcheckOk: finData.fastcheckOk });
+      setTermine({
+        fastcheckOk: finData.fastcheckOk,
+        token: tok,
+        emailsSimules: !!finData.emailsSimules,
+      });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
       setErreur(e instanceof Error ? e.message : "Une erreur est survenue.");
@@ -143,7 +153,23 @@ export function FormulaireCollecte({
           <p className="mt-4 text-sm">
             Certaines pièces n&apos;ont pas pu être vérifiées automatiquement
             (document scanné ou nom différent) : notre équipe les contrôlera
-            manuellement, vous n&apos;avez rien de plus à faire.
+            manuellement, vous n&apos;avez rien de plus à faire de ce côté.
+          </p>
+        )}
+        {planDisponible && (
+          <div className="mt-8 border-t-2 border-black pt-6">
+            <p className="font-semibold">
+              Dernière étape : lire et signer le plan de prévention du festival.
+            </p>
+            <a className="btn mt-4" href={`/plan/${termine.token}`}>
+              Signer le plan de prévention →
+            </a>
+          </div>
+        )}
+        {termine.emailsSimules && (
+          <p className="mt-6 text-xs text-black/50">
+            Mode recette : les emails de confirmation sont simulés (SMTP non
+            configuré).
           </p>
         )}
       </div>

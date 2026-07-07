@@ -22,12 +22,11 @@ export async function GET() {
     "Prestataire;Email;Date d'envoi;Statut de réponse;Date de dernière relance;Lien pièces;Plan de prévention",
   ];
   for (const p of db.prestataires) {
-    const plan =
-      p.statut === "plan_signe"
-        ? `Signé le ${fmt(p.plan?.dateSignature)}`
-        : p.statut === "plan_envoye"
-          ? `Envoyé le ${fmt(p.plan?.dateEnvoi)} — en attente`
-          : "";
+    const plan = p.plan?.dateSignature
+      ? `Signé le ${fmt(p.plan.dateSignature)}`
+      : p.plan?.dateEnvoi
+        ? `Envoyé le ${fmt(p.plan.dateEnvoi)} — en attente`
+        : "";
     lignes.push(
       [
         p.societe,
@@ -35,7 +34,7 @@ export async function GET() {
         fmt(p.dateInvitation),
         STATUT_LABELS[p.statut],
         fmt(p.dateDerniereRelance),
-        p.dateSoumission ? `${appUrl()}/admin?dossier=${p.id}` : "",
+        p.driveFolderUrl || (p.dateSoumission ? `${appUrl()}/admin?dossier=${p.id}` : ""),
         plan,
       ].join(";")
     );

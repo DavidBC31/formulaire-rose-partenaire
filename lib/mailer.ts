@@ -110,7 +110,14 @@ export function tplRelance(p: Prestataire): { subject: string; html: string } {
   };
 }
 
-export function tplConfirmationDepot(p: Prestataire): { subject: string; html: string } {
+export function tplConfirmationDepot(
+  p: Prestataire,
+  planDisponible = false
+): { subject: string; html: string } {
+  const suite = planDisponible && !p.plan?.dateSignature
+    ? `<p><strong>Dernière étape :</strong> lire et signer le plan de prévention du festival.</p>
+       ${bouton(`${appUrl()}/plan/${p.token}`, "Signer le plan de prévention")}`
+    : "";
   return {
     subject: "Rose Festival — Vos pièces ont bien été reçues",
     html: layout(
@@ -118,7 +125,19 @@ export function tplConfirmationDepot(p: Prestataire): { subject: string; html: s
       `<p>Bonjour,</p>
        <p>Nous confirmons la bonne réception des pièces administratives de <strong>${p.societe}</strong>.
        Elles vont être contrôlées par notre équipe ; nous reviendrons vers vous si un document doit être complété.</p>
+       ${suite}
        <p>Merci, et à très vite au Rose Festival !</p>`
+    ),
+  };
+}
+
+export function tplTest(): { subject: string; html: string } {
+  return {
+    subject: "Rose Festival — Email de test",
+    html: layout(
+      "Test",
+      `<p>Ceci est un email de test envoyé depuis l'outil de collecte des pièces
+       prestataires. Si vous le recevez, la configuration SMTP est opérationnelle ✅.</p>`
     ),
   };
 }

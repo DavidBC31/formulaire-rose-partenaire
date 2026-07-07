@@ -33,6 +33,7 @@ export default async function Home({
         token={prestataire?.token}
         societeInvitee={prestataire?.societe}
         dejaSoumis={!!prestataire?.dateSoumission}
+        planDisponible={!!db.planDocument}
       />
     </div>
   );

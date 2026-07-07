@@ -25,12 +25,16 @@ export function AdminDashboard({
   prestataires,
   planDocument,
   mailConfigured,
-  defaultPassword,
+  authDisabled,
+  driveConfigured,
+  sheetUrl,
 }: {
   prestataires: Prestataire[];
   planDocument: PlanDocument | null;
   mailConfigured: boolean;
-  defaultPassword: boolean;
+  authDisabled: boolean;
+  driveConfigured: boolean;
+  sheetUrl: string | null;
 }) {
   const router = useRouter();
   const [filtre, setFiltre] = useState<"tous" | Statut>("tous");
@@ -48,7 +52,7 @@ export function AdminDashboard({
       if (["a_inviter", "en_attente"].includes(p.statut)) s.attente++;
       else if (["recu_ok", "recu_a_verifier"].includes(p.statut)) s.recus++;
       else if (["valide", "plan_envoye"].includes(p.statut)) s.valides++;
-      if (p.statut === "plan_signe") s.signes++;
+      if (p.plan?.dateSignature) s.signes++;
     }
     return s;
   }, [prestataires]);
@@ -74,7 +78,13 @@ export function AdminDashboard({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Action impossible");
-      if (typeof data.traites === "number")
+      if (act === "email_test")
+        setMessage(
+          data.dryRun
+            ? `★ Email de test SIMULÉ vers ${data.to} — configurer SMTP_HOST/SMTP_USER/SMTP_PASS pour un envoi réel.`
+            : `Email de test envoyé à ${data.to} ✓`
+        );
+      else if (typeof data.traites === "number")
         setMessage(`${data.traites} email(s) envoyé(s).`);
       router.refresh();
     } catch (e) {
@@ -128,22 +138,28 @@ export function AdminDashboard({
         <h1 className="display text-3xl sm:text-4xl">
           Suivi <span className="text-rose-vif">prestataires</span>
         </h1>
-        <button className="btn-outline btn-sm" onClick={deconnexion}>
-          Déconnexion
-        </button>
+        {!authDisabled && (
+          <button className="btn-outline btn-sm" onClick={deconnexion}>
+            Déconnexion
+          </button>
+        )}
       </div>
 
-      {(!mailConfigured || defaultPassword) && (
+      {(!mailConfigured || !driveConfigured) && (
         <div className="card mb-6 border-rose-vif p-4 text-sm font-semibold">
           {!mailConfigured && (
             <p>
-              ★ SMTP non configuré : les emails sont simulés (mode recette).
-              Renseigner SMTP_HOST/SMTP_USER/SMTP_PASS pour envoyer réellement
-              depuis administration@rosefestival.fr.
+              ★ SMTP non configuré : les emails sont <u>simulés</u>, personne ne
+              reçoit rien. Renseigner SMTP_HOST/SMTP_USER/SMTP_PASS (boîte
+              administration@rosefestival.fr) puis utiliser « Email de test ».
             </p>
           )}
-          {defaultPassword && (
-            <p>★ Mot de passe admin par défaut : définir ADMIN_PASSWORD avant la mise en production.</p>
+          {!driveConfigured && (
+            <p>
+              ★ Google Drive/Sheet non connectés : les pièces restent stockées
+              dans l&apos;app. Configurer GOOGLE_SERVICE_ACCOUNT_KEY +
+              GOOGLE_DRIVE_FOLDER_ID + GOOGLE_SHEET_ID (voir README).
+            </p>
           )}
         </div>
       )}
@@ -190,6 +206,18 @@ export function AdminDashboard({
         <a className="btn-outline btn-sm" href="/api/admin/export">
           ⬇ Export CSV
         </a>
+        {sheetUrl && (
+          <a className="btn-outline btn-sm" href={sheetUrl} target="_blank">
+            ↗ Google Sheet
+          </a>
+        )}
+        <button
+          className="btn-outline btn-sm"
+          disabled={enCours === "null:email_test"}
+          onClick={() => action(null, "email_test")}
+        >
+          ✉ Email de test
+        </button>
         <label className="btn-outline btn-sm cursor-pointer">
           {planDocument ? "Remplacer le plan de prévention" : "Déposer le plan de prévention"}
           <input
@@ -353,10 +381,10 @@ function Ligne({
           )}
         </td>
         <td className="px-3 py-2">
-          {p.statut === "plan_signe"
-            ? `Signé ${fmt(p.plan?.dateSignature)}`
-            : p.statut === "plan_envoye"
-              ? `Envoyé ${fmt(p.plan?.dateEnvoi)}`
+          {p.plan?.dateSignature
+            ? `Signé ${fmt(p.plan.dateSignature)}`
+            : p.plan?.dateEnvoi
+              ? `Envoyé ${fmt(p.plan.dateEnvoi)}`
               : "—"}
         </td>
         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
@@ -388,16 +416,17 @@ function Ligne({
                 ✓ Valider
               </button>
             )}
-            {["valide", "plan_envoye"].includes(p.statut) && (
-              <button
-                className="btn btn-sm"
-                disabled={busy("envoyer_plan") || !planDisponible}
-                title={planDisponible ? "" : "Déposer d'abord le PDF du plan de prévention"}
-                onClick={() => action(p.id, "envoyer_plan")}
-              >
-                {p.statut === "plan_envoye" ? "↻ Renvoyer plan" : "→ Envoyer plan"}
-              </button>
-            )}
+            {["recu_ok", "recu_a_verifier", "valide", "plan_envoye"].includes(p.statut) &&
+              !p.plan?.dateSignature && (
+                <button
+                  className="btn btn-sm"
+                  disabled={busy("envoyer_plan") || !planDisponible}
+                  title={planDisponible ? "" : "Déposer d'abord le PDF du plan de prévention"}
+                  onClick={() => action(p.id, "envoyer_plan")}
+                >
+                  {p.plan?.dateEnvoi ? "↻ Renvoyer plan" : "→ Envoyer plan"}
+                </button>
+              )}
           </div>
         </td>
       </tr>
@@ -441,6 +470,13 @@ function Ligne({
                 </ul>
                 {p.dateSoumission && (
                   <p className="mt-2 text-xs">Déposées le {fmt(p.dateSoumission)}</p>
+                )}
+                {p.driveFolderUrl && (
+                  <p className="mt-1 text-xs">
+                    <a className="font-bold underline" href={p.driveFolderUrl} target="_blank">
+                      Ouvrir le dossier Drive ↗
+                    </a>
+                  </p>
                 )}
               </div>
               <div>

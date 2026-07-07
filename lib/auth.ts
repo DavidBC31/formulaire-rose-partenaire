@@ -4,11 +4,12 @@ import { cookies } from "next/headers";
 const COOKIE_NAME = "rose_admin";
 
 function password(): string {
-  return process.env.ADMIN_PASSWORD || "rose2026";
+  return process.env.ADMIN_PASSWORD || "";
 }
 
-export function usesDefaultPassword(): boolean {
-  return !process.env.ADMIN_PASSWORD;
+/** Sans ADMIN_PASSWORD défini, l'admin est en accès libre (choix recette). */
+export function authRequired(): boolean {
+  return !!password();
 }
 
 export function sessionToken(): string {
@@ -18,12 +19,14 @@ export function sessionToken(): string {
 }
 
 export function checkPassword(pw: string): boolean {
+  if (!authRequired()) return true;
   const a = Buffer.from(pw);
   const b = Buffer.from(password());
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
 export async function isAdmin(): Promise<boolean> {
+  if (!authRequired()) return true;
   const store = await cookies();
   const val = store.get(COOKIE_NAME)?.value;
   return !!val && val === sessionToken();

@@ -11,8 +11,12 @@ export default async function PlanPage({
   const { token } = await params;
   const db = await readDb();
   const p = findByToken(db, token);
+  const accessible =
+    p &&
+    (["recu_ok", "recu_a_verifier", "valide", "plan_envoye", "plan_signe"].includes(p.statut) ||
+      !!p.plan?.dateSignature);
 
-  if (!p || !["plan_envoye", "plan_signe", "valide"].includes(p.statut)) {
+  if (!p || !accessible) {
     return (
       <div className="mx-auto max-w-xl px-4 py-16 text-center">
         <div className="card p-8">
@@ -43,7 +47,7 @@ export default async function PlanPage({
       </div>
       <PlanSignature
         token={token}
-        dejaSigne={p.statut === "plan_signe"}
+        dejaSigne={!!p.plan?.dateSignature}
         dateSignature={p.plan?.dateSignature}
         signataire={p.plan?.signataire}
         documentDisponible={!!db.planDocument}

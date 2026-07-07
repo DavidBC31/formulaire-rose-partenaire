@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { isAdmin } from "@/lib/auth";
 import { readDb, writeDb } from "@/lib/db";
 import { saveFile, isPdf, MAX_FILE_SIZE } from "@/lib/files";
+import { uploadToDriveRoot } from "@/lib/google";
 
 export const runtime = "nodejs";
 
@@ -20,6 +21,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Le fichier doit être un PDF" }, { status: 400 });
 
   const saved = await saveFile("plan-prevention.pdf", buffer, "application/pdf");
+  await uploadToDriveRoot("plan-de-prevention.pdf", buffer, "application/pdf");
   const db = await readDb();
   db.planDocument = {
     path: saved.path,

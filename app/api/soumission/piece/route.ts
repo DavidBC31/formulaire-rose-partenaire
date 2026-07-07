@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { readDb, writeDb, findByToken } from "@/lib/db";
 import { saveFile, slugify, isPdf, MAX_FILE_SIZE } from "@/lib/files";
 import { fastcheckPdf } from "@/lib/fastcheck";
+import { mirrorToDrive } from "@/lib/google";
 import { DOC_KEYS, type DocKey } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -37,6 +38,8 @@ export async function POST(req: NextRequest) {
 
   const fastcheck = await fastcheckPdf(buffer, p.societe);
   const saved = await saveFile(`${slugify(p.societe)}/${doc}.pdf`, buffer, "application/pdf");
+  // Classement dans le Drive dédié (sous-dossier du prestataire, CDC Brique 1).
+  await mirrorToDrive(p, `${doc}.pdf`, buffer, "application/pdf");
 
   p.pieces = p.pieces || {};
   p.pieces[doc] = {

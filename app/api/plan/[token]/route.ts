@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readDb, writeDb, findByToken } from "@/lib/db";
 import { saveFile, slugify } from "@/lib/files";
+import { mirrorToDrive } from "@/lib/google";
 import { sendMail, tplNotifSignature, MAIL_FROM } from "@/lib/mailer";
 
 export const runtime = "nodejs";
+
+// Signature possible dès le dépôt des pièces (même « à vérifier ») :
+// elle n'attend pas le contrôle humain, qui reste tracé dans le suivi.
+const STATUTS_PLAN = ["recu_ok", "recu_a_verifier", "valide", "plan_envoye"];
 
 /**
  * Signature numérique du plan de prévention (Brique 2) :
@@ -21,11 +26,15 @@ export async function POST(
   const db = await readDb();
   const p = findByToken(db, token);
   if (!p) return NextResponse.json({ error: "Lien invalide" }, { status: 404 });
-  if (!["plan_envoye", "valide"].includes(p.statut))
+  if (p.plan?.dateSignature)
+    return NextResponse.json({ error: "Plan déjà signé" }, { status: 400 });
+  if (!STATUTS_PLAN.includes(p.statut))
     return NextResponse.json(
-      { error: p.statut === "plan_signe" ? "Plan déjà signé" : "Plan non disponible pour ce dossier" },
+      { error: "Le plan sera disponible une fois vos pièces déposées" },
       { status: 400 }
     );
+  if (!db.planDocument)
+    return NextResponse.json({ error: "Document indisponible" }, { status: 400 });
 
   const signataire = String(body.signataire || "").trim();
   const fonction = String(body.fonction || "").trim();
@@ -45,9 +54,11 @@ export async function POST(
     return NextResponse.json({ error: "Signature trop lourde" }, { status: 400 });
 
   const saved = await saveFile(`${slugify(p.societe)}/signature-plan-prevention.png`, png, "image/png");
+  await mirrorToDrive(p, "signature-plan-prevention.png", png, "image/png");
 
   const now = new Date().toISOString();
-  p.statut = "plan_signe";
+  // Le statut « pièces » n'est pas écrasé tant que le contrôle humain n'a pas eu lieu.
+  if (p.statut === "valide" || p.statut === "plan_envoye") p.statut = "plan_signe";
   p.plan = {
     ...p.plan,
     dateSignature: now,

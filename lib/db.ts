@@ -1,6 +1,7 @@
 import { promises as fs } from "fs";
 import path from "path";
 import type { Db, Prestataire } from "./types";
+import { syncSheet } from "./google";
 
 const DATA_DIR = path.join(process.cwd(), ".data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
@@ -38,10 +39,12 @@ export async function writeDb(db: Db): Promise<void> {
       allowOverwrite: true,
       contentType: "application/json",
     });
-    return;
+  } else {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    await fs.writeFile(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
   }
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  await fs.writeFile(DB_FILE, JSON.stringify(db, null, 2), "utf-8");
+  // Le Google Sheet de suivi reflète chaque écriture (no-op si non configuré).
+  await syncSheet(db);
 }
 
 export function findByToken(db: Db, token: string): Prestataire | undefined {

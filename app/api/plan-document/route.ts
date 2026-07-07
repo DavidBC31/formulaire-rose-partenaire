@@ -12,7 +12,9 @@ export async function GET(req: NextRequest) {
   const token = req.nextUrl.searchParams.get("t") || "";
   const db = await readDb();
   const p = findByToken(db, token);
-  const autorise = p && ["plan_envoye", "plan_signe", "valide"].includes(p.statut);
+  const autorise =
+    p &&
+    ["recu_ok", "recu_a_verifier", "valide", "plan_envoye", "plan_signe"].includes(p.statut);
   if (!autorise || !db.planDocument)
     return NextResponse.json({ error: "Document indisponible" }, { status: 404 });
 

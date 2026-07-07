@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { readDb, writeDb, findByToken } from "@/lib/db";
 import { saveFile, slugify } from "@/lib/files";
+import { mirrorToDrive } from "@/lib/google";
 import {
   sendMail,
   tplConfirmationDepot,
@@ -46,15 +47,25 @@ export async function POST(req: NextRequest) {
     const csv = ["Prénom;Nom;Société"]
       .concat(p.equipe.map((m) => `${m.prenom};${m.nom};${m.societe}`))
       .join("\n");
-    await saveFile(`${slugify(p.societe)}/equipe.csv`, Buffer.from(csv, "utf-8"), "text/csv");
+    const buf = Buffer.from(csv, "utf-8");
+    await saveFile(`${slugify(p.societe)}/equipe.csv`, buf, "text/csv");
+    await mirrorToDrive(p, "equipe.csv", buf, "text/csv");
   }
 
   await writeDb(db);
 
-  const conf = tplConfirmationDepot(p);
-  await sendMail({ to: p.email, ...conf });
+  // Le plan de prévention est proposé dans la foulée si le document est prêt.
+  const planDisponible = !!db.planDocument;
+  const conf = tplConfirmationDepot(p, planDisponible);
+  const envoi = await sendMail({ to: p.email, ...conf });
   const notif = tplNotifDepot(p, ok);
   await sendMail({ to: MAIL_FROM, ...notif });
 
-  return NextResponse.json({ ok: true, statut: p.statut, fastcheckOk: ok });
+  return NextResponse.json({
+    ok: true,
+    statut: p.statut,
+    fastcheckOk: ok,
+    planDisponible,
+    emailsSimules: envoi.dryRun,
+  });
 }

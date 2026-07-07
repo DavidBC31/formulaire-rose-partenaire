@@ -6,6 +6,8 @@ import {
   tplInvitation,
   tplRelance,
   tplPlanPrevention,
+  tplTest,
+  MAIL_FROM,
 } from "@/lib/mailer";
 import { piecesCompletes } from "@/lib/types";
 
@@ -19,7 +21,8 @@ type Action =
   | "envoyer_plan"
   | "supprimer"
   | "inviter_tous"
-  | "relancer_tous";
+  | "relancer_tous"
+  | "email_test";
 
 /** Actions admin sur un dossier (ou en masse pour *_tous). */
 export async function POST(req: NextRequest) {
@@ -28,6 +31,12 @@ export async function POST(req: NextRequest) {
   const action = body?.action as Action;
   const db = await readDb();
   const now = new Date().toISOString();
+
+  if (action === "email_test") {
+    const to = String(body?.email || "").trim() || MAIL_FROM;
+    const res = await sendMail({ to, ...tplTest() });
+    return NextResponse.json({ ok: true, dryRun: res.dryRun, to });
+  }
 
   if (action === "inviter_tous" || action === "relancer_tous") {
     const cibles = db.prestataires.filter((p) =>
@@ -73,19 +82,20 @@ export async function POST(req: NextRequest) {
       break;
     }
     case "envoyer_plan": {
-      // Décision actée CDC : envoi conditionné à la validation des pièces.
-      if (p.statut !== "valide" && p.statut !== "plan_envoye")
+      // Envoi possible dès le dépôt des pièces (lecture + signature dans la
+      // foulée) ; le contrôle humain reste tracé via le statut « à vérifier ».
+      if (!["recu_ok", "recu_a_verifier", "valide", "plan_envoye"].includes(p.statut))
         return NextResponse.json(
-          { error: "Le plan ne peut être envoyé qu'après validation des pièces" },
+          { error: "Le plan ne peut être envoyé qu'une fois les pièces déposées" },
           { status: 400 }
         );
       if (!db.planDocument)
         return NextResponse.json(
-          { error: "Aucun plan de prévention n'a été déposé (voir Réglages)" },
+          { error: "Aucun plan de prévention n'a été déposé (voir la barre d'outils)" },
           { status: 400 }
         );
       await sendMail({ to: p.email, ...tplPlanPrevention(p) });
-      p.statut = "plan_envoye";
+      if (p.statut === "valide") p.statut = "plan_envoye";
       p.plan = { ...p.plan, dateEnvoi: now };
       break;
     }

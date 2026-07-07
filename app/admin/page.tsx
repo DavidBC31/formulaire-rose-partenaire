@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
-import { isAdmin, usesDefaultPassword } from "@/lib/auth";
+import { isAdmin, authRequired } from "@/lib/auth";
 import { readDb } from "@/lib/db";
+import { isDriveConfigured, sheetUrl } from "@/lib/google";
 import { isMailConfigured } from "@/lib/mailer";
 import { AdminDashboard } from "@/components/AdminDashboard";
 
@@ -17,7 +18,9 @@ export default async function AdminPage() {
       prestataires={db.prestataires}
       planDocument={db.planDocument || null}
       mailConfigured={isMailConfigured()}
-      defaultPassword={usesDefaultPassword()}
+      authDisabled={!authRequired()}
+      driveConfigured={isDriveConfigured()}
+      sheetUrl={sheetUrl()}
     />
   );
 }

@@ -69,6 +69,8 @@ export interface Prestataire {
   dateInvitation?: string;
   dateSoumission?: string;
   dateDerniereRelance?: string;
+  driveFolderId?: string;
+  driveFolderUrl?: string;
   plan?: {
     dateEnvoi?: string;
     dateSignature?: string;
