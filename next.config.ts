@@ -12,6 +12,11 @@ const nextConfig: NextConfig = {
       "./node_modules/pdfjs-dist/**",
       "./node_modules/@napi-rs/**",
     ],
+    "/api/admin/action": [
+      "./node_modules/pdf-parse/dist/**",
+      "./node_modules/pdfjs-dist/**",
+      "./node_modules/@napi-rs/**",
+    ],
   },
   // Plusieurs lockfiles présents sur la machine : fixer la racine du projet.
   turbopack: { root: __dirname },

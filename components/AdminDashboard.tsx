@@ -518,6 +518,15 @@ function Ligne({
                   >
                     Copier le lien du formulaire
                   </button>
+                  {Object.keys(p.pieces || {}).length > 0 && (
+                    <button
+                      className="btn-outline btn-sm"
+                      disabled={enCours === `${p.id}:recontroler`}
+                      onClick={() => action(p.id, "recontroler")}
+                    >
+                      ↻ Recontrôler les pièces
+                    </button>
+                  )}
                   <button
                     className="btn-outline btn-sm"
                     onClick={() =>

@@ -9,7 +9,9 @@ import {
   tplTest,
   MAIL_FROM,
 } from "@/lib/mailer";
-import { piecesCompletes } from "@/lib/types";
+import { DOC_KEYS, fastcheckGlobal, piecesCompletes } from "@/lib/types";
+import { fastcheckPdf } from "@/lib/fastcheck";
+import { readLocalFile } from "@/lib/files";
 
 export const runtime = "nodejs";
 export const maxDuration = 120;
@@ -20,6 +22,7 @@ type Action =
   | "valider"
   | "envoyer_plan"
   | "supprimer"
+  | "recontroler"
   | "inviter_tous"
   | "relancer_tous"
   | "email_test";
@@ -103,6 +106,31 @@ export async function POST(req: NextRequest) {
       db.prestataires = db.prestataires.filter((x) => x.id !== p.id);
       await writeDb(db);
       return NextResponse.json({ ok: true });
+    }
+    case "recontroler": {
+      // Rejoue le fastcheck sur les pièces déjà stockées (utile après une
+      // évolution du contrôle : pas besoin de redemander les fichiers).
+      let recontroles = 0;
+      for (const key of DOC_KEYS) {
+        const piece = p.pieces?.[key];
+        if (!piece) continue;
+        let buf: Buffer | null = null;
+        if (piece.url) {
+          const res = await fetch(piece.url, { cache: "no-store" });
+          if (res.ok) buf = Buffer.from(await res.arrayBuffer());
+        } else {
+          buf = await readLocalFile(piece.path);
+        }
+        if (!buf) continue;
+        piece.fastcheck = await fastcheckPdf(buf, p.societe);
+        recontroles++;
+      }
+      if (piecesCompletes(p) && ["recu_ok", "recu_a_verifier"].includes(p.statut)) {
+        p.statut = fastcheckGlobal(p) ? "recu_ok" : "recu_a_verifier";
+      }
+      p.updatedAt = now;
+      await writeDb(db);
+      return NextResponse.json({ ok: true, recontroles, statut: p.statut });
     }
     default:
       return NextResponse.json({ error: "Action inconnue" }, { status: 400 });
