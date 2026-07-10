@@ -46,8 +46,9 @@ export async function fastcheckPdf(
     } finally {
       await parser.destroy();
     }
-  } catch {
-    text = "";
+  } catch (e) {
+    // Ne jamais avaler l'erreur : c'est la seule trace en prod (logs Vercel).
+    console.error("[FASTCHECK] extraction du texte PDF impossible :", e);
   }
 
   // PDF scanné / illisible : pas de texte exploitable → vérification humaine.
@@ -55,12 +56,26 @@ export async function fastcheckPdf(
     return { ok: false, textFound: false, score: 0, tokensFound: [], tokensMissing: tokens };
   }
 
-  const tokensFound = tokens.filter((t) => text.includes(t));
-  const tokensMissing = tokens.filter((t) => !text.includes(t));
+  // Tolérances : texte sans espaces (mots coupés par l'extraction) et
+  // singulier/pluriel (dernier caractère facultatif pour les tokens longs).
+  const compact = text.replace(/ /g, "");
+  const matche = (t: string): boolean => {
+    if (text.includes(t) || compact.includes(t)) return true;
+    if (t.length > 4) {
+      const sing = t.slice(0, -1);
+      return text.includes(sing) || compact.includes(sing);
+    }
+    return false;
+  };
+
+  const tokensFound = tokens.filter(matche);
+  const tokensMissing = tokens.filter((t) => !tokensFound.includes(t));
   const score = tokens.length ? tokensFound.length / tokens.length : 0;
 
   return {
-    ok: tokensMissing.length === 0,
+    // Cohérent si au moins la moitié des mots significatifs du nom figurent
+    // dans le document (et au moins un) — le reste part en contrôle humain.
+    ok: tokensFound.length > 0 && score >= 0.5,
     textFound: true,
     score,
     tokensFound,
