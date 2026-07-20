@@ -45,3 +45,4 @@ next-env.d.ts
 
 # env example doit être versionné
 !.env.example
+.data-*.mjs
