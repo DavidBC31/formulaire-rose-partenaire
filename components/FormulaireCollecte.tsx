@@ -27,7 +27,9 @@ export function FormulaireCollecte({
   const [societe, setSociete] = useState(societeInvitee || "");
   const [contact, setContact] = useState({ prenom: "", nom: "", email: "", telephone: "" });
   const [responsable, setResponsable] = useState({ nom: "", telephone: "" });
+  const [effectif, setEffectif] = useState("");
   const [equipe, setEquipe] = useState<Membre[]>([{ prenom: "", nom: "", societe: "" }]);
+  const [attestePlan, setAttestePlan] = useState(false);
   const fichiers = useRef<Partial<Record<DocKey, File>>>({});
   const [nomsFichiers, setNomsFichiers] = useState<Partial<Record<DocKey, string>>>({});
   const [progression, setProgression] = useState<Partial<Record<DocKey, EtapeUpload>>>({});
@@ -36,8 +38,8 @@ export function FormulaireCollecte({
   const [erreur, setErreur] = useState("");
   const [termine, setTermine] = useState<null | {
     fastcheckOk: boolean;
-    token: string;
     emailsSimules: boolean;
+    planAtteste: boolean;
   }>(null);
 
   function choisirFichier(doc: DocKey, file: File | undefined) {
@@ -50,6 +52,7 @@ export function FormulaireCollecte({
     fichiers.current[doc] = file;
     setNomsFichiers((s) => ({ ...s, [doc]: file.name }));
     setProgression((s) => ({ ...s, [doc]: "attente" }));
+    setFastchecks((s) => ({ ...s, [doc]: undefined }));
   }
 
   async function envoyer() {
@@ -62,11 +65,14 @@ export function FormulaireCollecte({
       return setErreur(
         `Pièce(s) manquante(s) : ${manquants.map((k) => DOC_LABELS[k]).join(", ")}.`
       );
-    const membresValides = equipe.filter((m) => m.nom.trim() || m.prenom.trim());
-    if (membresValides.length === 0)
-      return setErreur("Merci d'indiquer au moins une personne présente sur site.");
     if (!responsable.nom.trim())
-      return setErreur("Merci d'indiquer le responsable présent sur site.");
+      return setErreur("Merci d'indiquer le responsable de l'équipe.");
+    if (!(Number(effectif) > 0))
+      return setErreur("Merci d'indiquer le nombre approximatif de personnes sur site.");
+    if (planDisponible && !attestePlan)
+      return setErreur("Merci d'attester avoir pris connaissance du plan de prévention.");
+
+    const membresValides = equipe.filter((m) => m.nom.trim() || m.prenom.trim());
 
     setEnvoiEnCours(true);
     try {
@@ -83,6 +89,7 @@ export function FormulaireCollecte({
           contactTelephone: contact.telephone,
           responsableNom: responsable.nom,
           responsableTelephone: responsable.telephone,
+          effectifApprox: effectif,
           equipe: membresValides.map((m) => ({ ...m, societe: m.societe || societe })),
         }),
       });
@@ -111,14 +118,14 @@ export function FormulaireCollecte({
       const fin = await fetch("/api/soumission/finaliser", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: tok }),
+        body: JSON.stringify({ token: tok, attestePlan }),
       });
       const finData = await fin.json();
       if (!fin.ok) throw new Error(finData.error || "Erreur lors de la finalisation");
       setTermine({
         fastcheckOk: finData.fastcheckOk,
-        token: tok,
         emailsSimules: !!finData.emailsSimules,
+        planAtteste: !!planDisponible && attestePlan,
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
@@ -149,22 +156,17 @@ export function FormulaireCollecte({
             </li>
           ))}
         </ul>
+        {termine.planAtteste && (
+          <p className="mt-4 text-sm">
+            Vous avez attesté avoir pris connaissance du plan de prévention.
+          </p>
+        )}
         {!termine.fastcheckOk && (
           <p className="mt-4 text-sm">
             Certaines pièces n&apos;ont pas pu être vérifiées automatiquement
             (document scanné ou nom différent) : notre équipe les contrôlera
             manuellement, vous n&apos;avez rien de plus à faire de ce côté.
           </p>
-        )}
-        {planDisponible && (
-          <div className="mt-8 border-t-2 border-black pt-6">
-            <p className="font-semibold">
-              Dernière étape : lire et signer le plan de prévention du festival.
-            </p>
-            <a className="btn mt-4" href={`/plan/${termine.token}`}>
-              Signer le plan de prévention →
-            </a>
-          </div>
         )}
         {termine.emailsSimules && (
           <p className="mt-6 text-xs text-black/50">
@@ -239,38 +241,56 @@ export function FormulaireCollecte({
           doit figurer sur chaque document.
         </p>
         <div className="space-y-3">
-          {DOC_KEYS.map((doc) => (
-            <label
-              key={doc}
-              className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-black bg-white p-3 transition hover:bg-rose/40"
-            >
-              <div className="min-w-0">
-                <div className="text-sm font-bold">{DOC_LABELS[doc]} *</div>
-                <div className="truncate text-xs text-black/60">
-                  {nomsFichiers[doc] || "Aucun fichier choisi — cliquer pour parcourir"}
-                </div>
-              </div>
-              <span className="shrink-0">
-                {progression[doc] === "envoi" ? (
-                  <span className="badge animate-pulse bg-rose">envoi…</span>
-                ) : progression[doc] === "ok" ? (
-                  <span className="badge bg-rose">✓</span>
-                ) : progression[doc] === "a_verifier" ? (
-                  <span className="badge bg-white">⚠</span>
-                ) : nomsFichiers[doc] ? (
-                  <span className="badge bg-rose">prêt</span>
-                ) : (
-                  <span className="btn btn-sm pointer-events-none">Choisir</span>
+          {DOC_KEYS.map((doc) => {
+            const fc = fastchecks[doc];
+            const nonConforme = fc && fc.textFound && !fc.ok;
+            const nonLisible = fc && !fc.textFound;
+            return (
+              <div key={doc}>
+                <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-black bg-white p-3 transition hover:bg-rose/40">
+                  <div className="min-w-0">
+                    <div className="text-sm font-bold">{DOC_LABELS[doc]} *</div>
+                    <div className="truncate text-xs text-black/60">
+                      {nomsFichiers[doc] || "Aucun fichier choisi — cliquer pour parcourir"}
+                    </div>
+                  </div>
+                  <span className="shrink-0">
+                    {progression[doc] === "envoi" ? (
+                      <span className="badge animate-pulse bg-rose">envoi…</span>
+                    ) : progression[doc] === "ok" ? (
+                      <span className="badge bg-rose">✓</span>
+                    ) : progression[doc] === "a_verifier" ? (
+                      <span className="badge bg-white">⚠</span>
+                    ) : nomsFichiers[doc] ? (
+                      <span className="badge bg-rose">prêt</span>
+                    ) : (
+                      <span className="btn btn-sm pointer-events-none">Choisir</span>
+                    )}
+                  </span>
+                  <input
+                    type="file"
+                    accept="application/pdf"
+                    className="hidden"
+                    onChange={(e) => choisirFichier(doc, e.target.files?.[0])}
+                  />
+                </label>
+                {nonConforme && (
+                  <p className="mt-1 px-1 text-xs font-semibold text-rose-vif">
+                    ★ Pièce non conforme : le nom figurant sur le document ne
+                    correspond pas aux données de la structure. Vérifiez que le
+                    bon document est déposé, sinon notre équipe le contrôlera
+                    manuellement.
+                  </p>
                 )}
-              </span>
-              <input
-                type="file"
-                accept="application/pdf"
-                className="hidden"
-                onChange={(e) => choisirFichier(doc, e.target.files?.[0])}
-              />
-            </label>
-          ))}
+                {nonLisible && (
+                  <p className="mt-1 px-1 text-xs">
+                    Document non lisible automatiquement (PDF scanné) : il sera
+                    vérifié manuellement par notre équipe.
+                  </p>
+                )}
+              </div>
+            );
+          })}
         </div>
       </section>
 
@@ -279,12 +299,10 @@ export function FormulaireCollecte({
         <h2 className="display mb-1 text-2xl">
           <span className="text-rose-vif">3.</span> Votre équipe sur site
         </h2>
-        <p className="mb-4 text-sm">
-          Liste nominative des personnes présentes sur le festival.
-        </p>
+        <p className="mb-4 text-sm">Responsable de l&apos;équipe.</p>
         <div className="mb-4 grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label" htmlFor="resp">Responsable présent sur site *</label>
+            <label className="label" htmlFor="resp">Responsable de l&apos;équipe *</label>
             <input id="resp" className="input" value={responsable.nom}
               onChange={(e) => setResponsable({ ...responsable, nom: e.target.value })}
               placeholder="Nom et prénom" />
@@ -294,6 +312,23 @@ export function FormulaireCollecte({
             <input id="resptel" type="tel" className="input" value={responsable.telephone}
               onChange={(e) => setResponsable({ ...responsable, telephone: e.target.value })} />
           </div>
+          <div>
+            <label className="label" htmlFor="effectif">Nombre approximatif de personnes sur site *</label>
+            <input id="effectif" type="number" min="1" className="input" value={effectif}
+              onChange={(e) => setEffectif(e.target.value)} placeholder="Ex. 8" />
+          </div>
+        </div>
+
+        <div className="mb-2">
+          <span className="label">L&apos;équipe *</span>
+          <p className="mb-3 text-xs text-black/70">
+            * Si vous ne disposez pas encore de la liste nominative des personnes
+            présentes, celle-ci devra être envoyée au plus tard à J-7 à{" "}
+            <a className="font-bold underline" href="mailto:administration@rosefestival.fr">
+              administration@rosefestival.fr
+            </a>
+            .
+          </p>
         </div>
         <div className="space-y-2">
           {equipe.map((m, i) => (
@@ -345,6 +380,35 @@ export function FormulaireCollecte({
           + Ajouter une personne
         </button>
       </section>
+
+      {/* 4 — Plan de prévention */}
+      {planDisponible && (
+        <section className="card p-6">
+          <h2 className="display mb-1 text-2xl">
+            <span className="text-rose-vif">4.</span> Plan de prévention
+          </h2>
+          <p className="mb-4 text-sm">
+            Merci de prendre connaissance du plan de prévention du Rose Festival
+            avant votre intervention.
+          </p>
+          <a className="btn-outline btn-sm" href="/api/plan-document" target="_blank" rel="noopener">
+            ⬇ Télécharger le plan de prévention
+          </a>
+          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border-2 border-black bg-white p-4">
+            <input
+              type="checkbox"
+              className="mt-1 h-5 w-5 accent-rose-vif"
+              checked={attestePlan}
+              onChange={(e) => setAttestePlan(e.target.checked)}
+            />
+            <span className="text-sm font-semibold">
+              J&apos;atteste avoir pris connaissance du plan de prévention du
+              Rose Festival et m&apos;engage à le faire respecter par mon équipe
+              présente sur site. *
+            </span>
+          </label>
+        </section>
+      )}
 
       {erreur && (
         <div className="card border-rose-vif bg-white p-4 text-sm font-bold text-rose-vif">

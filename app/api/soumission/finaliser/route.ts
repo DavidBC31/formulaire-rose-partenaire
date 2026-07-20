@@ -14,8 +14,8 @@ export const runtime = "nodejs";
 
 /**
  * Étape 3 : clôture de la soumission une fois les 4 pièces déposées.
- * Statut selon fastcheck, liste d'équipe archivée en CSV, emails de
- * confirmation (prestataire) et de notification (administration@).
+ * Statut selon fastcheck, attestation du plan de prévention, liste d'équipe
+ * archivée en CSV, emails de confirmation (prestataire) et notification (administration@).
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -33,13 +33,28 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // Attestation obligatoire du plan de prévention si un document est en ligne.
+  const planDisponible = !!db.planDocument;
+  if (planDisponible && body?.attestePlan !== true) {
+    return NextResponse.json(
+      { error: "Merci d'attester avoir pris connaissance du plan de prévention." },
+      { status: 400 }
+    );
+  }
+
   const now = new Date().toISOString();
   const ok = fastcheckGlobal(p);
-  // On ne rétrograde jamais un dossier déjà validé / plan signé.
+  // On ne rétrograde jamais un dossier déjà validé.
   if (["a_inviter", "en_attente", "recu_a_verifier", "recu_ok"].includes(p.statut)) {
     p.statut = ok ? "recu_ok" : "recu_a_verifier";
   }
   p.dateSoumission = now;
+  if (planDisponible) {
+    p.plan = {
+      dateAttestation: now,
+      ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "inconnue",
+    };
+  }
   p.updatedAt = now;
 
   // Archive de la liste nominative dans le dossier du prestataire.
@@ -54,9 +69,7 @@ export async function POST(req: NextRequest) {
 
   await writeDb(db);
 
-  // Le plan de prévention est proposé dans la foulée si le document est prêt.
-  const planDisponible = !!db.planDocument;
-  const conf = tplConfirmationDepot(p, planDisponible);
+  const conf = tplConfirmationDepot(p);
   const envoi = await sendMail({ to: p.email, ...conf });
   const notif = tplNotifDepot(p, ok);
   await sendMail({ to: MAIL_FROM, ...notif });
@@ -65,7 +78,6 @@ export async function POST(req: NextRequest) {
     ok: true,
     statut: p.statut,
     fastcheckOk: ok,
-    planDisponible,
     emailsSimules: envoi.dryRun,
   });
 }

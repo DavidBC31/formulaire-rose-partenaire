@@ -22,11 +22,7 @@ export async function GET() {
     "Prestataire;Email;Date d'envoi;Statut de réponse;Date de dernière relance;Lien pièces;Plan de prévention",
   ];
   for (const p of db.prestataires) {
-    const plan = p.plan?.dateSignature
-      ? `Signé le ${fmt(p.plan.dateSignature)}`
-      : p.plan?.dateEnvoi
-        ? `Envoyé le ${fmt(p.plan.dateEnvoi)} — en attente`
-        : "";
+    const plan = p.plan?.dateAttestation ? `Attesté le ${fmt(p.plan.dateAttestation)}` : "";
     lignes.push(
       [
         p.societe,

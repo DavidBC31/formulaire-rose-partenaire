@@ -64,6 +64,8 @@ export async function POST(req: NextRequest) {
     nom: String(body.responsableNom || "").trim(),
     telephone: String(body.responsableTelephone || "").trim(),
   };
+  const effectif = Number.parseInt(String(body.effectifApprox ?? ""), 10);
+  p.effectifApprox = Number.isFinite(effectif) && effectif > 0 ? effectif : undefined;
   p.equipe = equipe;
   p.updatedAt = now;
 

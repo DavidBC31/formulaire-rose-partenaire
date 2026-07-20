@@ -268,10 +268,76 @@ export async function uploadToDriveRoot(
   }
 }
 
+/** Nom de l'onglet où l'équipe liste les prestataires à inviter. */
+const INVITE_TAB = "À inviter";
+
+interface SheetTab {
+  sheetId: number;
+  title: string;
+  index: number;
+}
+
+async function sheetsMeta(id: string): Promise<SheetTab[]> {
+  const res = await gfetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${id}?fields=sheets.properties(sheetId,title,index)`
+  );
+  const data = await res.json();
+  return ((data.sheets || []) as { properties: SheetTab }[]).map((s) => s.properties);
+}
+
+/** Crée l'onglet « À inviter » (avec en-têtes) s'il n'existe pas encore. */
+async function ensureInviteTab(id: string, titles: SheetTab[]): Promise<void> {
+  if (titles.some((t) => t.title === INVITE_TAB)) return;
+  await gfetch(`https://sheets.googleapis.com/v4/spreadsheets/${id}:batchUpdate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      requests: [{ addSheet: { properties: { title: INVITE_TAB } } }],
+    }),
+  });
+  await gfetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(
+      `'${INVITE_TAB}'!A1`
+    )}?valueInputOption=USER_ENTERED`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ majorDimension: "ROWS", values: [["Société", "Email"]] }),
+    }
+  );
+}
+
+/** Lit les lignes (Société | Email) saisies dans l'onglet « À inviter ». */
+export async function readInvitationRows(): Promise<{ societe: string; email: string }[]> {
+  if (!isSheetConfigured()) return [];
+  const id = process.env.GOOGLE_SHEET_ID!;
+  const titles = await sheetsMeta(id);
+  await ensureInviteTab(id, titles);
+  const res = await gfetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(
+      `'${INVITE_TAB}'!A2:B2000`
+    )}`
+  );
+  const data = await res.json();
+  const rows = (data.values || []) as string[][];
+  return rows
+    .map((r) => ({ societe: String(r[0] || "").trim(), email: String(r[1] || "").trim() }))
+    .filter((r) => r.societe || r.email);
+}
+
 /** Réécrit le tableau de suivi dans le Google Sheet (colonnes du CDC). */
 export async function syncSheet(db: Db): Promise<void> {
   if (!isSheetConfigured()) return;
   try {
+    const id = process.env.GOOGLE_SHEET_ID!;
+    const titles = await sheetsMeta(id);
+    await ensureInviteTab(id, titles);
+    // Suivi = premier onglet hors « À inviter » (pour ne pas écraser l'entrée).
+    const suivi = titles
+      .filter((t) => t.title !== INVITE_TAB)
+      .sort((a, b) => a.index - b.index)[0];
+    const suiviTitle = suivi ? suivi.title : "Feuille 1";
+
     const fmtD = (iso?: string) => (iso ? new Date(iso).toLocaleDateString("fr-FR") : "");
     const values: string[][] = [
       [
@@ -285,11 +351,6 @@ export async function syncSheet(db: Db): Promise<void> {
       ],
     ];
     for (const p of db.prestataires) {
-      const plan = p.plan?.dateSignature
-        ? `Signé le ${fmtD(p.plan.dateSignature)}`
-        : p.plan?.dateEnvoi
-          ? `Envoyé le ${fmtD(p.plan.dateEnvoi)} — en attente`
-          : "";
       values.push([
         p.societe,
         p.email,
@@ -297,20 +358,22 @@ export async function syncSheet(db: Db): Promise<void> {
         STATUT_LABELS[p.statut],
         fmtD(p.dateDerniereRelance),
         p.driveFolderUrl || "",
-        plan,
+        p.plan?.dateAttestation ? `Attesté le ${fmtD(p.plan.dateAttestation)}` : "",
       ]);
     }
-    const id = process.env.GOOGLE_SHEET_ID!;
+    const range = (r: string) => encodeURIComponent(`'${suiviTitle}'!${r}`);
     await gfetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/A1:G10000:clear`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${range("A1:G10000")}:clear`,
       { method: "POST" }
     );
     await gfetch(
-      `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/A1?valueInputOption=USER_ENTERED`,
+      `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${range(
+        "A1"
+      )}?valueInputOption=USER_ENTERED`,
       {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ range: "A1", majorDimension: "ROWS", values }),
+        body: JSON.stringify({ majorDimension: "ROWS", values }),
       }
     );
   } catch (e) {

@@ -17,8 +17,6 @@ const BADGE_STYLE: Record<Statut, string> = {
   recu_a_verifier: "bg-amber-300",
   recu_ok: "bg-rose-mid",
   valide: "bg-green-300",
-  plan_envoye: "bg-rose-vif text-white",
-  plan_signe: "bg-black text-rose",
 };
 
 export function AdminDashboard({
@@ -45,12 +43,12 @@ export function AdminDashboard({
   const [enCours, setEnCours] = useState<string | null>(null);
 
   const stats = useMemo(() => {
-    const s = { total: prestataires.length, attente: 0, recus: 0, valides: 0, signes: 0 };
+    const s = { total: prestataires.length, attente: 0, recus: 0, valides: 0, attestes: 0 };
     for (const p of prestataires) {
       if (["a_inviter", "en_attente"].includes(p.statut)) s.attente++;
       else if (["recu_ok", "recu_a_verifier"].includes(p.statut)) s.recus++;
-      else if (["valide", "plan_envoye"].includes(p.statut)) s.valides++;
-      if (p.plan?.dateSignature) s.signes++;
+      else if (p.statut === "valide") s.valides++;
+      if (p.plan?.dateAttestation) s.attestes++;
     }
     return s;
   }, [prestataires]);
@@ -79,8 +77,13 @@ export function AdminDashboard({
       if (act === "email_test")
         setMessage(
           data.dryRun
-            ? `★ Email de test SIMULÉ vers ${data.to} — configurer SMTP_HOST/SMTP_USER/SMTP_PASS pour un envoi réel.`
+            ? `★ Email de test SIMULÉ vers ${data.to} — configurer l'envoi (GMAIL_DELEGATE ou SMTP) pour un envoi réel.`
             : `Email de test envoyé à ${data.to} ✓`
+        );
+      else if (act === "importer_sheet")
+        setMessage(
+          `${data.invites} invitation(s) envoyée(s) depuis le Sheet (sur ${data.lignes} ligne(s)).` +
+            (data.erreurs?.length ? ` ${data.erreurs.length} ignorée(s) : ${data.erreurs.join(" · ")}` : "")
         );
       else if (typeof data.traites === "number")
         setMessage(`${data.traites} email(s) envoyé(s).`);
@@ -167,7 +170,7 @@ export function AdminDashboard({
           ["En attente", stats.attente],
           ["Pièces reçues", stats.recus],
           ["Validés", stats.valides],
-          ["Plans signés", stats.signes],
+          ["Plans attestés", stats.attestes],
         ].map(([label, n]) => (
           <div key={label} className="card p-3 text-center">
             <div className="display text-3xl">{n}</div>
@@ -181,6 +184,21 @@ export function AdminDashboard({
         <button className="btn btn-sm" onClick={() => setPanneauAjout(!panneauAjout)}>
           + Prestataires
         </button>
+        {sheetUrl && (
+          <button
+            className="btn btn-sm"
+            disabled={enCours === "null:importer_sheet"}
+            onClick={() =>
+              action(
+                null,
+                "importer_sheet",
+                "Importer l'onglet « À inviter » du Google Sheet et envoyer les invitations aux nouvelles lignes ?"
+              )
+            }
+          >
+            {enCours === "null:importer_sheet" ? "Import…" : "⇪ Importer + inviter (Sheet)"}
+          </button>
+        )}
         <button
           className="btn-outline btn-sm"
           disabled={enCours === "null:inviter_tous"}
@@ -323,7 +341,6 @@ export function AdminDashboard({
                 basculer={() => setOuvert(ouvert === p.id ? null : p.id)}
                 action={action}
                 enCours={enCours}
-                planDisponible={!!planDocument}
               />
             ))}
           </tbody>
@@ -339,14 +356,12 @@ function Ligne({
   basculer,
   action,
   enCours,
-  planDisponible,
 }: {
   p: Prestataire;
   ouvert: boolean;
   basculer: () => void;
   action: (id: string, act: string, confirmation?: string) => Promise<void>;
   enCours: string | null;
-  planDisponible: boolean;
 }) {
   const piecesRecues = DOC_KEYS.filter((k) => p.pieces?.[k]).length;
   const fastcheckOk = DOC_KEYS.every((k) => p.pieces?.[k]?.fastcheck.ok);
@@ -377,11 +392,7 @@ function Ligne({
           )}
         </td>
         <td className="px-3 py-2">
-          {p.plan?.dateSignature
-            ? `Signé ${fmt(p.plan.dateSignature)}`
-            : p.plan?.dateEnvoi
-              ? `Envoyé ${fmt(p.plan.dateEnvoi)}`
-              : "—"}
+          {p.plan?.dateAttestation ? `Attesté ${fmt(p.plan.dateAttestation)}` : "—"}
         </td>
         <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
           <div className="flex flex-wrap gap-1">
@@ -412,17 +423,6 @@ function Ligne({
                 ✓ Valider
               </button>
             )}
-            {["recu_ok", "recu_a_verifier", "valide", "plan_envoye"].includes(p.statut) &&
-              !p.plan?.dateSignature && (
-                <button
-                  className="btn btn-sm"
-                  disabled={busy("envoyer_plan") || !planDisponible}
-                  title={planDisponible ? "" : "Déposer d'abord le PDF du plan de prévention"}
-                  onClick={() => action(p.id, "envoyer_plan")}
-                >
-                  {p.plan?.dateEnvoi ? "↻ Renvoyer plan" : "→ Envoyer plan"}
-                </button>
-              )}
           </div>
         </td>
       </tr>
@@ -476,11 +476,19 @@ function Ligne({
                 )}
               </div>
               <div>
-                <div className="label">Équipe sur site ({p.equipe?.length || 0})</div>
+                <div className="label">
+                  Équipe sur site
+                  {p.effectifApprox ? ` (~${p.effectifApprox} pers.)` : ""}
+                </div>
                 {p.responsableSite?.nom && (
                   <p className="text-sm">
                     <strong>Responsable :</strong> {p.responsableSite.nom}
                     {p.responsableSite.telephone && ` — ${p.responsableSite.telephone}`}
+                  </p>
+                )}
+                {(p.equipe?.length ?? 0) === 0 && (
+                  <p className="text-xs text-black/60">
+                    Liste nominative non fournie (attendue à J-7).
                   </p>
                 )}
                 <ul className="mt-1 max-h-32 space-y-0.5 overflow-y-auto text-sm">
@@ -500,13 +508,10 @@ function Ligne({
                   Contact : {p.contact?.prenom} {p.contact?.nom}
                   {p.contact?.telephone && ` — ${p.contact.telephone}`}
                 </p>
-                {p.plan?.dateSignature && (
+                {p.plan?.dateAttestation && (
                   <p className="mt-1 text-sm">
-                    Plan signé par <strong>{p.plan.signataire}</strong>
-                    {p.plan.fonction && ` (${p.plan.fonction})`} —{" "}
-                    <a className="font-bold underline" href={`/api/fichier?id=${p.id}&doc=signature`} target="_blank">
-                      voir la signature
-                    </a>
+                    Plan de prévention attesté le{" "}
+                    <strong>{fmt(p.plan.dateAttestation)}</strong>.
                   </p>
                 )}
                 <p className="mt-2 flex flex-wrap gap-2">

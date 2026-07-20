@@ -93,7 +93,7 @@ export function tplInvitation(p: Prestataire): { subject: string; html: string }
          <li>Attestation de vigilance URSSAF</li>
          <li>Attestation fiscale de moins de 6 mois</li>
          <li>Attestation de responsabilité civile professionnelle</li>
-         <li>Liste nominative de votre équipe présente sur site</li>
+         <li>Le responsable et l'effectif de votre équipe présente sur site</li>
        </ul>
        ${bouton(lien, "Déposer mes pièces")}
        <p style="font-size:13px;color:#555">Ce lien est personnel à votre société. En cas de question :
@@ -118,13 +118,10 @@ export function tplRelance(p: Prestataire): { subject: string; html: string } {
   };
 }
 
-export function tplConfirmationDepot(
-  p: Prestataire,
-  planDisponible = false
-): { subject: string; html: string } {
-  const suite = planDisponible && !p.plan?.dateSignature
-    ? `<p><strong>Dernière étape :</strong> lire et signer le plan de prévention du festival.</p>
-       ${bouton(`${appUrl()}/plan/${p.token}`, "Signer le plan de prévention")}`
+export function tplConfirmationDepot(p: Prestataire): { subject: string; html: string } {
+  const attestation = p.plan?.dateAttestation
+    ? `<p>Nous avons également bien enregistré votre attestation de prise de connaissance
+       du plan de prévention.</p>`
     : "";
   return {
     subject: "Rose Festival — Vos pièces ont bien été reçues",
@@ -133,7 +130,7 @@ export function tplConfirmationDepot(
       `<p>Bonjour,</p>
        <p>Nous confirmons la bonne réception des pièces administratives de <strong>${p.societe}</strong>.
        Elles vont être contrôlées par notre équipe ; nous reviendrons vers vous si un document doit être complété.</p>
-       ${suite}
+       ${attestation}
        <p>Merci, et à très vite au Rose Festival !</p>`
     ),
   };
@@ -151,39 +148,13 @@ export function tplTest(): { subject: string; html: string } {
 }
 
 export function tplNotifDepot(p: Prestataire, fastcheckOk: boolean): { subject: string; html: string } {
+  const plan = p.plan?.dateAttestation ? " · plan attesté" : "";
   return {
     subject: `[Formulaire] Pièces reçues — ${p.societe} ${fastcheckOk ? "(fastcheck OK)" : "(à vérifier)"}`,
     html: layout(
       "Nouvelle soumission",
-      `<p><strong>${p.societe}</strong> a déposé ses pièces.</p>
+      `<p><strong>${p.societe}</strong> a déposé ses pièces${plan}.</p>
        <p>Fastcheck : ${fastcheckOk ? "✅ cohérent" : "⚠️ incohérences détectées — vérification manuelle requise"}.</p>
-       ${bouton(`${appUrl()}/admin`, "Ouvrir le suivi")}`
-    ),
-  };
-}
-
-export function tplPlanPrevention(p: Prestataire): { subject: string; html: string } {
-  const lien = `${appUrl()}/plan/${p.token}`;
-  return {
-    subject: "Rose Festival — Plan de prévention à signer",
-    html: layout(
-      "Plan de prévention",
-      `<p>Bonjour,</p>
-       <p>Les pièces administratives de <strong>${p.societe}</strong> ont été validées ✅.</p>
-       <p>Dernière étape avant votre intervention : consulter le <strong>plan de prévention</strong> du
-       Rose Festival et le signer électroniquement.</p>
-       ${bouton(lien, "Consulter et signer")}`
-    ),
-  };
-}
-
-export function tplNotifSignature(p: Prestataire): { subject: string; html: string } {
-  return {
-    subject: `[Formulaire] Plan de prévention signé — ${p.societe}`,
-    html: layout(
-      "Plan signé",
-      `<p><strong>${p.societe}</strong> a accepté les modalités et signé le plan de prévention
-       (signataire : ${p.plan?.signataire || "?"}).</p>
        ${bouton(`${appUrl()}/admin`, "Ouvrir le suivi")}`
     ),
   };

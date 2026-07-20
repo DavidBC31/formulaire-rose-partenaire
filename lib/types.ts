@@ -37,9 +37,7 @@ export type Statut =
   | "en_attente"
   | "recu_a_verifier"
   | "recu_ok"
-  | "valide"
-  | "plan_envoye"
-  | "plan_signe";
+  | "valide";
 
 export const STATUT_LABELS: Record<Statut, string> = {
   a_inviter: "À inviter",
@@ -47,8 +45,6 @@ export const STATUT_LABELS: Record<Statut, string> = {
   recu_a_verifier: "Reçu — à vérifier",
   recu_ok: "Reçu — fastcheck OK",
   valide: "Pièces validées",
-  plan_envoye: "Plan envoyé",
-  plan_signe: "Plan signé",
 };
 
 export interface Prestataire {
@@ -64,6 +60,7 @@ export interface Prestataire {
     email?: string;
   };
   responsableSite?: { nom?: string; telephone?: string };
+  effectifApprox?: number;
   equipe?: TeamMember[];
   pieces?: Partial<Record<DocKey, PieceInfo>>;
   dateInvitation?: string;
@@ -71,13 +68,10 @@ export interface Prestataire {
   dateDerniereRelance?: string;
   driveFolderId?: string;
   driveFolderUrl?: string;
+  // Attestation de prise de connaissance du plan de prévention (case cochée
+  // en fin de formulaire) — remplace l'ancienne signature manuscrite.
   plan?: {
-    dateEnvoi?: string;
-    dateSignature?: string;
-    signataire?: string;
-    fonction?: string;
-    signaturePath?: string;
-    signatureUrl?: string;
+    dateAttestation?: string;
     ip?: string;
   };
   createdAt: string;

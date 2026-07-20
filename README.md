@@ -1,6 +1,6 @@
 # Formulaire Partenaire Rose — Rose Festival
 
-Collecte des pièces prestataires et signature du plan de prévention pour le
+Collecte des pièces prestataires et attestation du plan de prévention pour le
 Rose Festival (~100 prestataires). Réalisé d'après le cahier des charges
 SI-PRO20, avec la direction artistique du site [rosefestival.fr](https://rosefestival.fr).
 
@@ -9,8 +9,14 @@ SI-PRO20, avec la direction artistique du site [rosefestival.fr](https://rosefes
 **Brique 1 — Collecte, classement et suivi des pièces**
 
 - Formulaire public (`/`) : KBIS, attestation de vigilance URSSAF, attestation
-  fiscale de moins de 6 mois, attestation RC professionnelle + liste nominative
-  de l'équipe présente sur site (avec responsable).
+  fiscale de moins de 6 mois, attestation RC professionnelle + responsable et
+  effectif approximatif de l'équipe sur site. La liste nominative est
+  facultative dans le formulaire : à défaut, elle est attendue au plus tard à
+  J-7 à administration@rosefestival.fr.
+- **Premier envoi via le Google Sheet** : l'équipe liste les prestataires
+  (Société | Email) dans l'onglet **« À inviter »** du Sheet, puis clique
+  « ⇪ Importer + inviter (Sheet) » dans l'admin — les nouveaux prestataires
+  sont créés et invités en un clic.
 - **Fastcheck** automatique : le texte de chaque PDF est analysé pour vérifier
   que le nom du prestataire y figure. PDF scanné ou nom absent → dossier marqué
   « à vérifier » (contrôle humain), jamais validé silencieusement.
@@ -25,16 +31,15 @@ SI-PRO20, avec la direction artistique du site [rosefestival.fr](https://rosefes
   prestataires sans réponse depuis ≥ 6 jours, depuis
   `administration@rosefestival.fr`, jusqu'à réception des pièces.
 
-**Brique 2 — Plan de prévention et signature numérique**
+**Brique 2 — Plan de prévention (attestation intégrée au formulaire)**
 
-- Lecture et signature **dans la foulée du dépôt des pièces** : l'écran de fin
-  du formulaire et l'email de confirmation mènent directement au plan, même si
-  le fastcheck a marqué le dossier « à vérifier » (le contrôle humain reste
-  tracé dans le suivi et ne bloque pas le prestataire).
-- Le prestataire consulte le PDF, coche « J'accepte les modalités », signe au
-  doigt/à la souris. Signature PNG + horodatage + IP conservés dans le dossier
-  (et le Drive).
-- Statut (envoyé / signé) visible dans le tableau de suivi, le Sheet et l'export.
+- Le plan de prévention est une **section du formulaire** (dès qu'un PDF est
+  déposé côté admin) : le prestataire le télécharge et coche
+  « J'atteste avoir pris connaissance du plan de prévention » — case
+  **obligatoire** pour valider l'envoi.
+- L'attestation (date + IP) est conservée dans le dossier et remonte dans le
+  tableau de suivi, le Google Sheet et l'export CSV (colonne « Plan de
+  prévention : Attesté le … »).
 
 ## Démarrage (dev / recette)
 
@@ -54,14 +59,16 @@ npm run dev        # http://localhost:3000
 
 ### Parcours de recette conseillé
 
-1. `/admin` → « + Prestataires » → ajouter une société de test avec votre email.
-2. « ✉ Inviter » → copier le lien du formulaire (ou lire le log serveur).
+1. `/admin` → déposer le PDF du plan de prévention (bouton dans la barre
+   d'outils) pour activer la section 4 du formulaire.
+2. `/admin` → « + Prestataires » (ou onglet « À inviter » du Sheet +
+   « ⇪ Importer + inviter ») → « ✉ Inviter » → copier le lien du formulaire.
 3. Ouvrir le lien, remplir le formulaire, déposer 4 PDF (dont un au nom de la
-   société pour voir le fastcheck ✓ et un autre pour voir le ⚠).
-4. `/admin` → vérifier le dossier, « ✓ Valider ».
-5. Déposer le PDF du plan de prévention (bouton dans la barre d'outils) →
-   « → Envoyer plan » → ouvrir `/plan/<token>` → accepter + signer.
-6. Vérifier le statut « Plan signé » et l'export CSV.
+   société pour voir le fastcheck ✓ et un autre pour voir le message « pièce
+   non conforme »), renseigner responsable + effectif, cocher l'attestation.
+4. `/admin` → vérifier le dossier (pièces, effectif, « Plan attesté le … »),
+   « ✓ Valider ».
+5. Vérifier l'export CSV et la synchro du Google Sheet.
 
 ## Configuration (production)
 

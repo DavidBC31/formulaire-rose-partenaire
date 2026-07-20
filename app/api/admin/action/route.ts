@@ -1,30 +1,31 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomBytes, randomUUID } from "crypto";
 import { isAdmin } from "@/lib/auth";
 import { readDb, writeDb, findById } from "@/lib/db";
 import {
   sendMail,
   tplInvitation,
   tplRelance,
-  tplPlanPrevention,
   tplTest,
   MAIL_FROM,
 } from "@/lib/mailer";
-import { DOC_KEYS, fastcheckGlobal, piecesCompletes } from "@/lib/types";
-import { fastcheckPdf } from "@/lib/fastcheck";
+import { DOC_KEYS, fastcheckGlobal, piecesCompletes, type Prestataire } from "@/lib/types";
+import { fastcheckPdf, normalizeText } from "@/lib/fastcheck";
 import { readLocalFile } from "@/lib/files";
+import { readInvitationRows } from "@/lib/google";
 
 export const runtime = "nodejs";
-export const maxDuration = 120;
+export const maxDuration = 300;
 
 type Action =
   | "inviter"
   | "relancer"
   | "valider"
-  | "envoyer_plan"
   | "supprimer"
   | "recontroler"
   | "inviter_tous"
   | "relancer_tous"
+  | "importer_sheet"
   | "email_test";
 
 /** Actions admin sur un dossier (ou en masse pour *_tous). */
@@ -39,6 +40,53 @@ export async function POST(req: NextRequest) {
     const to = String(body?.email || "").trim() || MAIL_FROM;
     const res = await sendMail({ to, ...tplTest() });
     return NextResponse.json({ ok: true, dryRun: res.dryRun, to });
+  }
+
+  if (action === "importer_sheet") {
+    // Lit l'onglet « À inviter » du Google Sheet, crée les prestataires
+    // manquants et envoie l'invitation à chacun (premier envoi via le Sheet).
+    let lignes: { societe: string; email: string }[];
+    try {
+      lignes = await readInvitationRows();
+    } catch (e) {
+      return NextResponse.json(
+        { error: `Lecture du Sheet impossible : ${e instanceof Error ? e.message : e}` },
+        { status: 400 }
+      );
+    }
+    const existants = new Set(db.prestataires.map((p) => normalizeText(p.societe)));
+    const erreurs: string[] = [];
+    let invites = 0;
+    for (const { societe, email } of lignes) {
+      if (!societe || !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) {
+        erreurs.push(`Ligne ignorée : "${societe};${email}"`);
+        continue;
+      }
+      let p = db.prestataires.find((x) => normalizeText(x.societe) === normalizeText(societe));
+      if (!p) {
+        p = {
+          id: randomUUID(),
+          societe,
+          email: email.toLowerCase(),
+          token: randomBytes(16).toString("hex"),
+          statut: "a_inviter",
+          createdAt: now,
+          updatedAt: now,
+        } satisfies Prestataire;
+        db.prestataires.push(p);
+        existants.add(normalizeText(societe));
+      }
+      // On (ré)invite uniquement les dossiers pas encore passés en réception.
+      if (p.statut === "a_inviter" || p.statut === "en_attente") {
+        await sendMail({ to: p.email, ...tplInvitation(p) });
+        p.statut = "en_attente";
+        p.dateInvitation = now;
+        p.updatedAt = now;
+        invites++;
+      }
+    }
+    await writeDb(db);
+    return NextResponse.json({ ok: true, invites, lignes: lignes.length, erreurs });
   }
 
   if (action === "inviter_tous" || action === "relancer_tous") {
@@ -82,24 +130,6 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       p.statut = "valide";
-      break;
-    }
-    case "envoyer_plan": {
-      // Envoi possible dès le dépôt des pièces (lecture + signature dans la
-      // foulée) ; le contrôle humain reste tracé via le statut « à vérifier ».
-      if (!["recu_ok", "recu_a_verifier", "valide", "plan_envoye"].includes(p.statut))
-        return NextResponse.json(
-          { error: "Le plan ne peut être envoyé qu'une fois les pièces déposées" },
-          { status: 400 }
-        );
-      if (!db.planDocument)
-        return NextResponse.json(
-          { error: "Aucun plan de prévention n'a été déposé (voir la barre d'outils)" },
-          { status: 400 }
-        );
-      await sendMail({ to: p.email, ...tplPlanPrevention(p) });
-      if (p.statut === "valide") p.statut = "plan_envoye";
-      p.plan = { ...p.plan, dateEnvoi: now };
       break;
     }
     case "supprimer": {

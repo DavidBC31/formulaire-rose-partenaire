@@ -1,21 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-import { readDb, findByToken } from "@/lib/db";
+import { NextResponse } from "next/server";
+import { readDb } from "@/lib/db";
 import { readLocalFile } from "@/lib/files";
 
 export const runtime = "nodejs";
 
 /**
- * Sert le PDF du plan de prévention au prestataire, uniquement avec un
- * token valide dont le plan a été envoyé (?t=<token>).
+ * Sert le PDF du plan de prévention pour consultation dans le formulaire.
+ * Document général (mêmes consignes pour tous), servi dès qu'il est en ligne —
+ * un prestataire arrivant sur le formulaire public n'a pas encore de token.
  */
-export async function GET(req: NextRequest) {
-  const token = req.nextUrl.searchParams.get("t") || "";
+export async function GET() {
   const db = await readDb();
-  const p = findByToken(db, token);
-  const autorise =
-    p &&
-    ["recu_ok", "recu_a_verifier", "valide", "plan_envoye", "plan_signe"].includes(p.statut);
-  if (!autorise || !db.planDocument)
+  if (!db.planDocument)
     return NextResponse.json({ error: "Document indisponible" }, { status: 404 });
 
   if (db.planDocument.url) return NextResponse.redirect(db.planDocument.url);
