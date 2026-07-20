@@ -16,7 +16,11 @@ export async function readDb(): Promise<Db> {
     const { head } = await import("@vercel/blob");
     try {
       const meta = await head(BLOB_DB_PATH);
-      const res = await fetch(meta.url, { cache: "no-store" });
+      // Cache-buster : évite qu'un nœud CDN serve une version périmée du
+      // db.json juste après une écriture (cohérence lecture-après-écriture).
+      const bust = meta.uploadedAt ? new Date(meta.uploadedAt).getTime() : "";
+      const url = `${meta.url}${meta.url.includes("?") ? "&" : "?"}v=${bust}`;
+      const res = await fetch(url, { cache: "no-store" });
       return (await res.json()) as Db;
     } catch {
       return structuredClone(EMPTY_DB);
@@ -38,6 +42,7 @@ export async function writeDb(db: Db): Promise<void> {
       addRandomSuffix: false,
       allowOverwrite: true,
       contentType: "application/json",
+      cacheControlMaxAge: 0, // db.json change souvent : pas de cache CDN
     });
   } else {
     await fs.mkdir(DATA_DIR, { recursive: true });
