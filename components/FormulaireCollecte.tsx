@@ -26,7 +26,13 @@ export function FormulaireCollecte({
 }) {
   const [societe, setSociete] = useState(societeInvitee || "");
   const [contact, setContact] = useState({ prenom: "", nom: "", email: "", telephone: "" });
-  const [responsable, setResponsable] = useState({ nom: "", telephone: "" });
+  const [responsable, setResponsable] = useState({
+    prenom: "",
+    nom: "",
+    email: "",
+    telephone: "",
+    societe: "",
+  });
   const [effectif, setEffectif] = useState("");
   const [equipe, setEquipe] = useState<Membre[]>([{ prenom: "", nom: "", societe: "" }]);
   const [attestePlan, setAttestePlan] = useState(false);
@@ -66,7 +72,9 @@ export function FormulaireCollecte({
         `Pièce(s) manquante(s) : ${manquants.map((k) => DOC_LABELS[k]).join(", ")}.`
       );
     if (!responsable.nom.trim())
-      return setErreur("Merci d'indiquer le responsable de l'équipe.");
+      return setErreur("Merci d'indiquer le nom du responsable de l'équipe.");
+    if (responsable.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(responsable.email))
+      return setErreur("L'email du responsable est invalide.");
     if (!(Number(effectif) > 0))
       return setErreur("Merci d'indiquer le nombre approximatif de personnes sur site.");
     if (planDisponible && !attestePlan)
@@ -87,8 +95,11 @@ export function FormulaireCollecte({
           contactPrenom: contact.prenom,
           contactNom: contact.nom,
           contactTelephone: contact.telephone,
+          responsablePrenom: responsable.prenom,
           responsableNom: responsable.nom,
+          responsableEmail: responsable.email,
           responsableTelephone: responsable.telephone,
+          responsableSociete: responsable.societe || societe,
           effectifApprox: effectif,
           equipe: membresValides.map((m) => ({ ...m, societe: m.societe || societe })),
         }),
@@ -296,21 +307,39 @@ export function FormulaireCollecte({
 
       {/* 3 — Équipe sur site */}
       <section className="card p-6">
-        <h2 className="display mb-1 text-2xl">
+        <h2 className="display mb-5 text-2xl">
           <span className="text-rose-vif">3.</span> Votre équipe sur site
         </h2>
-        <p className="mb-4 text-sm">Responsable de l&apos;équipe.</p>
-        <div className="mb-4 grid gap-4 sm:grid-cols-2">
+
+        {/* 3a — Responsable de l'équipe */}
+        <h3 className="display mb-4 text-lg">Responsable de l&apos;équipe</h3>
+        <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label" htmlFor="resp">Responsable de l&apos;équipe *</label>
-            <input id="resp" className="input" value={responsable.nom}
-              onChange={(e) => setResponsable({ ...responsable, nom: e.target.value })}
-              placeholder="Nom et prénom" />
+            <label className="label" htmlFor="resp-prenom">Prénom</label>
+            <input id="resp-prenom" className="input" value={responsable.prenom}
+              onChange={(e) => setResponsable({ ...responsable, prenom: e.target.value })} />
           </div>
           <div>
-            <label className="label" htmlFor="resptel">Téléphone du responsable</label>
+            <label className="label" htmlFor="resp-nom">Nom *</label>
+            <input id="resp-nom" className="input" value={responsable.nom}
+              onChange={(e) => setResponsable({ ...responsable, nom: e.target.value })} />
+          </div>
+          <div>
+            <label className="label" htmlFor="resp-email">Email</label>
+            <input id="resp-email" type="email" className="input" value={responsable.email}
+              onChange={(e) => setResponsable({ ...responsable, email: e.target.value })}
+              placeholder="responsable@societe.fr" />
+          </div>
+          <div>
+            <label className="label" htmlFor="resptel">Téléphone</label>
             <input id="resptel" type="tel" className="input" value={responsable.telephone}
               onChange={(e) => setResponsable({ ...responsable, telephone: e.target.value })} />
+          </div>
+          <div>
+            <label className="label" htmlFor="resp-soc">Société</label>
+            <input id="resp-soc" className="input" value={responsable.societe}
+              onChange={(e) => setResponsable({ ...responsable, societe: e.target.value })}
+              placeholder={`Défaut : ${societe || "la vôtre"}`} />
           </div>
           <div>
             <label className="label" htmlFor="effectif">Nombre approximatif de personnes sur site *</label>
@@ -319,11 +348,14 @@ export function FormulaireCollecte({
           </div>
         </div>
 
-        <div className="mb-2">
-          <span className="label">L&apos;équipe *</span>
+        {/* 3b — L'équipe (liste nominative, facultative) */}
+        <div className="mt-6 border-t-2 border-black/10 pt-6">
+          <h3 className="display mb-1 text-lg">L&apos;équipe *</h3>
           <p className="mb-3 text-xs text-black/70">
-            * Si vous ne disposez pas encore de la liste nominative des personnes
-            présentes, celle-ci devra être envoyée au plus tard à J-7 à{" "}
+            Nom, prénom et société des personnes qui composent votre équipe.
+            * Facultatif : si vous ne disposez pas encore de la liste nominative
+            des personnes présentes, celle-ci devra être envoyée au plus tard à
+            J-7 à{" "}
             <a className="font-bold underline" href="mailto:administration@rosefestival.fr">
               administration@rosefestival.fr
             </a>

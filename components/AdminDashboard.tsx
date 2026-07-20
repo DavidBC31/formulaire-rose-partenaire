@@ -482,8 +482,18 @@ function Ligne({
                 </div>
                 {p.responsableSite?.nom && (
                   <p className="text-sm">
-                    <strong>Responsable :</strong> {p.responsableSite.nom}
-                    {p.responsableSite.telephone && ` — ${p.responsableSite.telephone}`}
+                    <strong>Responsable :</strong>{" "}
+                    {[p.responsableSite.prenom, p.responsableSite.nom].filter(Boolean).join(" ")}
+                    {p.responsableSite.societe && p.responsableSite.societe !== p.societe
+                      ? ` (${p.responsableSite.societe})`
+                      : ""}
+                    {p.responsableSite.email && (
+                      <>
+                        <br />
+                        {p.responsableSite.email}
+                      </>
+                    )}
+                    {p.responsableSite.telephone && ` · ${p.responsableSite.telephone}`}
                   </p>
                 )}
                 {(p.equipe?.length ?? 0) === 0 && (

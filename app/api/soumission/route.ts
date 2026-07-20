@@ -61,8 +61,11 @@ export async function POST(req: NextRequest) {
     email,
   };
   p.responsableSite = {
+    prenom: String(body.responsablePrenom || "").trim(),
     nom: String(body.responsableNom || "").trim(),
+    email: String(body.responsableEmail || "").trim(),
     telephone: String(body.responsableTelephone || "").trim(),
+    societe: String(body.responsableSociete || societe).trim(),
   };
   const effectif = Number.parseInt(String(body.effectifApprox ?? ""), 10);
   p.effectifApprox = Number.isFinite(effectif) && effectif > 0 ? effectif : undefined;

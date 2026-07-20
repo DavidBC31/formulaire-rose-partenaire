@@ -59,7 +59,13 @@ export interface Prestataire {
     telephone?: string;
     email?: string;
   };
-  responsableSite?: { nom?: string; telephone?: string };
+  responsableSite?: {
+    prenom?: string;
+    nom?: string;
+    email?: string;
+    telephone?: string;
+    societe?: string;
+  };
   effectifApprox?: number;
   equipe?: TeamMember[];
   pieces?: Partial<Record<DocKey, PieceInfo>>;
