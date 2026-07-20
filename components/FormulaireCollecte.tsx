@@ -13,6 +13,14 @@ type EtapeUpload = "attente" | "envoi" | "ok" | "a_verifier" | "erreur";
 
 const MAX_MO = 8;
 
+/** Astérisque rouge indiquant un champ obligatoire. */
+const Req = () => (
+  <span className="text-red-600" aria-hidden="true">
+    {" "}
+    *
+  </span>
+);
+
 export function FormulaireCollecte({
   token,
   societeInvitee,
@@ -61,20 +69,30 @@ export function FormulaireCollecte({
     setFastchecks((s) => ({ ...s, [doc]: undefined }));
   }
 
+  const emailValide = (e: string) => /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(e);
+
   async function envoyer() {
     setErreur("");
+    // Bloc 1 — société : tous les champs obligatoires.
     if (!societe.trim()) return setErreur("Le nom de votre société est requis.");
-    if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(contact.email))
+    if (!contact.prenom.trim()) return setErreur("Le prénom du contact est requis.");
+    if (!contact.nom.trim()) return setErreur("Le nom du contact est requis.");
+    if (!emailValide(contact.email))
       return setErreur("Merci d'indiquer un email de contact valide.");
+    if (!contact.telephone.trim()) return setErreur("Le téléphone du contact est requis.");
+    // Bloc 2 — les 4 pièces obligatoires.
     const manquants = DOC_KEYS.filter((k) => !fichiers.current[k]);
     if (manquants.length)
       return setErreur(
         `Pièce(s) manquante(s) : ${manquants.map((k) => DOC_LABELS[k]).join(", ")}.`
       );
-    if (!responsable.nom.trim())
-      return setErreur("Merci d'indiquer le nom du responsable de l'équipe.");
-    if (responsable.email && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(responsable.email))
-      return setErreur("L'email du responsable est invalide.");
+    // Bloc 3 — informations du responsable obligatoires (équipe facultative).
+    if (!responsable.prenom.trim()) return setErreur("Le prénom du responsable est requis.");
+    if (!responsable.nom.trim()) return setErreur("Le nom du responsable est requis.");
+    if (!emailValide(responsable.email))
+      return setErreur("Merci d'indiquer un email valide pour le responsable.");
+    if (!responsable.telephone.trim())
+      return setErreur("Le téléphone du responsable est requis.");
     if (!(Number(effectif) > 0))
       return setErreur("Merci d'indiquer le nombre approximatif de personnes sur site.");
     if (planDisponible && !attestePlan)
@@ -191,6 +209,10 @@ export function FormulaireCollecte({
 
   return (
     <div className="space-y-8">
+      <p className="text-sm">
+        Les champs marqués d&apos;un <span className="text-red-600">*</span> sont
+        obligatoires.
+      </p>
       {dejaSoumis && (
         <div className="card bg-rose-vif/20 p-4 text-sm font-semibold">
           ★ Des pièces ont déjà été reçues pour {societeInvitee}. Un nouvel
@@ -205,7 +227,7 @@ export function FormulaireCollecte({
         </h2>
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="sm:col-span-2">
-            <label className="label" htmlFor="societe">Raison sociale *</label>
+            <label className="label" htmlFor="societe">Raison sociale<Req /></label>
             <input
               id="societe"
               className="input"
@@ -219,23 +241,23 @@ export function FormulaireCollecte({
             )}
           </div>
           <div>
-            <label className="label" htmlFor="prenom">Prénom du contact</label>
+            <label className="label" htmlFor="prenom">Prénom du contact<Req /></label>
             <input id="prenom" className="input" value={contact.prenom}
               onChange={(e) => setContact({ ...contact, prenom: e.target.value })} />
           </div>
           <div>
-            <label className="label" htmlFor="nom">Nom du contact</label>
+            <label className="label" htmlFor="nom">Nom du contact<Req /></label>
             <input id="nom" className="input" value={contact.nom}
               onChange={(e) => setContact({ ...contact, nom: e.target.value })} />
           </div>
           <div>
-            <label className="label" htmlFor="email">Email *</label>
+            <label className="label" htmlFor="email">Email<Req /></label>
             <input id="email" type="email" className="input" value={contact.email}
               onChange={(e) => setContact({ ...contact, email: e.target.value })}
               placeholder="contact@societe.fr" />
           </div>
           <div>
-            <label className="label" htmlFor="tel">Téléphone</label>
+            <label className="label" htmlFor="tel">Téléphone<Req /></label>
             <input id="tel" type="tel" className="input" value={contact.telephone}
               onChange={(e) => setContact({ ...contact, telephone: e.target.value })} />
           </div>
@@ -260,7 +282,7 @@ export function FormulaireCollecte({
               <div key={doc}>
                 <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-black bg-white p-3 transition hover:bg-rose/40">
                   <div className="min-w-0">
-                    <div className="text-sm font-bold">{DOC_LABELS[doc]} *</div>
+                    <div className="text-sm font-bold">{DOC_LABELS[doc]}<Req /></div>
                     <div className="truncate text-xs text-black/60">
                       {nomsFichiers[doc] || "Aucun fichier choisi — cliquer pour parcourir"}
                     </div>
@@ -315,34 +337,34 @@ export function FormulaireCollecte({
         <h3 className="display mb-4 text-lg">Responsable de l&apos;équipe</h3>
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
-            <label className="label" htmlFor="resp-prenom">Prénom</label>
+            <label className="label" htmlFor="resp-prenom">Prénom<Req /></label>
             <input id="resp-prenom" className="input" value={responsable.prenom}
               onChange={(e) => setResponsable({ ...responsable, prenom: e.target.value })} />
           </div>
           <div>
-            <label className="label" htmlFor="resp-nom">Nom *</label>
+            <label className="label" htmlFor="resp-nom">Nom<Req /></label>
             <input id="resp-nom" className="input" value={responsable.nom}
               onChange={(e) => setResponsable({ ...responsable, nom: e.target.value })} />
           </div>
           <div>
-            <label className="label" htmlFor="resp-email">Email</label>
+            <label className="label" htmlFor="resp-email">Email<Req /></label>
             <input id="resp-email" type="email" className="input" value={responsable.email}
               onChange={(e) => setResponsable({ ...responsable, email: e.target.value })}
               placeholder="responsable@societe.fr" />
           </div>
           <div>
-            <label className="label" htmlFor="resptel">Téléphone</label>
+            <label className="label" htmlFor="resptel">Téléphone<Req /></label>
             <input id="resptel" type="tel" className="input" value={responsable.telephone}
               onChange={(e) => setResponsable({ ...responsable, telephone: e.target.value })} />
           </div>
           <div>
-            <label className="label" htmlFor="resp-soc">Société</label>
+            <label className="label" htmlFor="resp-soc">Société<Req /></label>
             <input id="resp-soc" className="input" value={responsable.societe}
               onChange={(e) => setResponsable({ ...responsable, societe: e.target.value })}
               placeholder={`Défaut : ${societe || "la vôtre"}`} />
           </div>
           <div>
-            <label className="label" htmlFor="effectif">Nombre approximatif de personnes sur site *</label>
+            <label className="label" htmlFor="effectif">Nombre approximatif de personnes sur site<Req /></label>
             <input id="effectif" type="number" min="1" className="input" value={effectif}
               onChange={(e) => setEffectif(e.target.value)} placeholder="Ex. 8" />
           </div>
@@ -350,10 +372,10 @@ export function FormulaireCollecte({
 
         {/* 3b — L'équipe (liste nominative, facultative) */}
         <div className="mt-6 border-t-2 border-black/10 pt-6">
-          <h3 className="display mb-1 text-lg">L&apos;équipe *</h3>
+          <h3 className="display mb-1 text-lg">L&apos;équipe</h3>
           <p className="mb-3 text-xs text-black/70">
             Nom, prénom et société des personnes qui composent votre équipe.
-            * Facultatif : si vous ne disposez pas encore de la liste nominative
+            Facultatif : si vous ne disposez pas encore de la liste nominative
             des personnes présentes, celle-ci devra être envoyée au plus tard à
             J-7 à{" "}
             <a className="font-bold underline" href="mailto:administration@rosefestival.fr">
@@ -436,7 +458,7 @@ export function FormulaireCollecte({
             <span className="text-sm font-semibold">
               J&apos;atteste avoir pris connaissance du plan de prévention du
               Rose Festival et m&apos;engage à le faire respecter par mon équipe
-              présente sur site. *
+              présente sur site.<Req />
             </span>
           </label>
         </section>
