@@ -2,13 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomBytes, randomUUID } from "crypto";
 import { readDb, writeDb, findByToken } from "@/lib/db";
 import { normalizeText } from "@/lib/fastcheck";
-import type { Prestataire, TeamMember } from "@/lib/types";
+import { applyInfo } from "@/lib/soumission";
+import type { Prestataire } from "@/lib/types";
 
 export const runtime = "nodejs";
 
 /**
- * Étape 1 de la soumission : enregistre les infos prestataire + équipe,
- * retourne le token à utiliser pour déposer les pièces une par une.
+ * Étape 1 : crée (ou retrouve) le prestataire et retourne son token pour la
+ * suite. Les infos sont appliquées ici puis RÉAPPLIQUÉES à la finalisation
+ * (source autoritaire), ce qui protège des lectures périmées du db.json.
  */
 export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => null);
@@ -19,16 +21,6 @@ export async function POST(req: NextRequest) {
   if (!societe) return NextResponse.json({ error: "Le nom de la société est requis" }, { status: 400 });
   if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email))
     return NextResponse.json({ error: "Email de contact invalide" }, { status: 400 });
-
-  const equipe: TeamMember[] = Array.isArray(body.equipe)
-    ? body.equipe
-        .map((m: Record<string, unknown>) => ({
-          prenom: String(m.prenom || "").trim(),
-          nom: String(m.nom || "").trim(),
-          societe: String(m.societe || societe).trim(),
-        }))
-        .filter((m: TeamMember) => m.nom || m.prenom)
-    : [];
 
   const db = await readDb();
   const now = new Date().toISOString();
@@ -52,24 +44,7 @@ export async function POST(req: NextRequest) {
     db.prestataires.push(p);
   }
 
-  p.societe = p.societe || societe;
-  p.email = email || p.email;
-  p.contact = {
-    prenom: String(body.contactPrenom || "").trim(),
-    nom: String(body.contactNom || "").trim(),
-    telephone: String(body.contactTelephone || "").trim(),
-    email,
-  };
-  p.responsableSite = {
-    prenom: String(body.responsablePrenom || "").trim(),
-    nom: String(body.responsableNom || "").trim(),
-    email: String(body.responsableEmail || "").trim(),
-    telephone: String(body.responsableTelephone || "").trim(),
-    societe: String(body.responsableSociete || societe).trim(),
-  };
-  const effectif = Number.parseInt(String(body.effectifApprox ?? ""), 10);
-  p.effectifApprox = Number.isFinite(effectif) && effectif > 0 ? effectif : undefined;
-  p.equipe = equipe;
+  applyInfo(p, body);
   p.updatedAt = now;
 
   await writeDb(db);

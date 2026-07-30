@@ -105,27 +105,30 @@ export function FormulaireCollecte({
 
     const membresValides = equipe.filter((m) => m.nom.trim() || m.prenom.trim());
 
+    // Infos communes (envoyées à la soumission ET réappliquées à la
+    // finalisation, source autoritaire).
+    const infos = {
+      societe,
+      email: contact.email,
+      contactPrenom: contact.prenom,
+      contactNom: contact.nom,
+      contactTelephone: contact.telephone,
+      responsablePrenom: responsable.prenom,
+      responsableNom: responsable.nom,
+      responsableEmail: responsable.email,
+      responsableTelephone: responsable.telephone,
+      responsableSociete: responsable.societe || societe,
+      effectifApprox: effectif,
+      equipe: membresValides.map((m) => ({ ...m, societe: m.societe || societe })),
+    };
+
     setEnvoiEnCours(true);
     try {
-      // 1. Infos prestataire + équipe
+      // 1. Création / rattachement du prestataire
       const res = await fetch("/api/soumission", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          token,
-          societe,
-          email: contact.email,
-          contactPrenom: contact.prenom,
-          contactNom: contact.nom,
-          contactTelephone: contact.telephone,
-          responsablePrenom: responsable.prenom,
-          responsableNom: responsable.nom,
-          responsableEmail: responsable.email,
-          responsableTelephone: responsable.telephone,
-          responsableSociete: responsable.societe || societe,
-          effectifApprox: effectif,
-          equipe: membresValides.map((m) => ({ ...m, societe: m.societe || societe })),
-        }),
+        body: JSON.stringify({ token, ...infos }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Erreur lors de l'envoi");
@@ -169,6 +172,7 @@ export function FormulaireCollecte({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           token: tok,
+          ...infos,
           attestePlan,
           pieces: piecesMeta,
           planSigne: planSigneMeta,

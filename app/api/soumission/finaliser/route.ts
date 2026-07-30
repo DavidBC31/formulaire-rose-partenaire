@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { writeDb, readDbForToken } from "@/lib/db";
 import { saveFile, slugify } from "@/lib/files";
+import { applyInfo } from "@/lib/soumission";
 import { mirrorToDrive, driveFolderFor } from "@/lib/google";
 import {
   sendMail,
@@ -30,6 +31,9 @@ export async function POST(req: NextRequest) {
 
   const { db, p } = await readDbForToken(token);
   if (!p) return NextResponse.json({ error: "Soumission introuvable" }, { status: 404 });
+
+  // Réapplication autoritaire des infos (protège d'une lecture périmée).
+  applyInfo(p, body);
 
   // Application des pièces transmises par le client (validées minimalement).
   const pieces: Partial<Record<DocKey, PieceInfo>> = {};
