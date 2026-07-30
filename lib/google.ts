@@ -254,6 +254,19 @@ export async function mirrorToDrive(
   }
 }
 
+/** Renvoie (en le créant au besoin) le dossier Drive du prestataire. */
+export async function driveFolderFor(
+  societe: string
+): Promise<{ id: string; url: string } | null> {
+  if (!isDriveConfigured()) return null;
+  try {
+    return await ensureDriveFolder(societe);
+  } catch (e) {
+    console.error(`[DRIVE] Dossier de ${societe} :`, e);
+    return null;
+  }
+}
+
 /** Dépose un document global (ex. plan de prévention) à la racine du Drive dédié. */
 export async function uploadToDriveRoot(
   fileName: string,

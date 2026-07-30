@@ -7,12 +7,12 @@ const DATA_DIR = path.join(process.cwd(), ".data");
 const DB_FILE = path.join(DATA_DIR, "db.json");
 const BLOB_DB_PATH = "formulaire-rose/db.json";
 
-const useBlob = () => !!process.env.BLOB_READ_WRITE_TOKEN;
+const blobEnabled = () => !!process.env.BLOB_READ_WRITE_TOKEN;
 
 const EMPTY_DB: Db = { prestataires: [] };
 
 export async function readDb(): Promise<Db> {
-  if (useBlob()) {
+  if (blobEnabled()) {
     const { head } = await import("@vercel/blob");
     try {
       const meta = await head(BLOB_DB_PATH);
@@ -35,7 +35,7 @@ export async function readDb(): Promise<Db> {
 }
 
 export async function writeDb(db: Db): Promise<void> {
-  if (useBlob()) {
+  if (blobEnabled()) {
     const { put } = await import("@vercel/blob");
     await put(BLOB_DB_PATH, JSON.stringify(db, null, 2), {
       access: "public",
@@ -55,6 +55,24 @@ export async function writeDb(db: Db): Promise<void> {
 export function findByToken(db: Db, token: string): Prestataire | undefined {
   if (!token) return undefined;
   return db.prestataires.find((p) => p.token === token);
+}
+
+/**
+ * Lit la base et attend que le prestataire du token soit visible (tolère la
+ * latence de propagation du Blob juste après une écriture d'une autre requête).
+ */
+export async function readDbForToken(
+  token: string,
+  tries = 4
+): Promise<{ db: Db; p?: Prestataire }> {
+  let db = await readDb();
+  let p = findByToken(db, token);
+  for (let i = 0; !p && i < tries - 1; i++) {
+    await new Promise((r) => setTimeout(r, 400));
+    db = await readDb();
+    p = findByToken(db, token);
+  }
+  return { db, p };
 }
 
 export function findById(db: Db, id: string): Prestataire | undefined {

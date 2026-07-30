@@ -4,7 +4,7 @@ import path from "path";
 const FILES_DIR = path.join(process.cwd(), ".data", "files");
 const BLOB_PREFIX = "formulaire-rose/files";
 
-const useBlob = () => !!process.env.BLOB_READ_WRITE_TOKEN;
+const blobEnabled = () => !!process.env.BLOB_READ_WRITE_TOKEN;
 
 export function slugify(s: string): string {
   return s
@@ -23,7 +23,7 @@ export async function saveFile(
   contentType: string
 ): Promise<{ path: string; url?: string }> {
   const clean = subpath.replace(/\.\./g, "").replace(/^\/+/, "");
-  if (useBlob()) {
+  if (blobEnabled()) {
     const { put } = await import("@vercel/blob");
     const blob = await put(`${BLOB_PREFIX}/${clean}`, data, {
       access: "public",

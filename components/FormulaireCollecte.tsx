@@ -131,7 +131,9 @@ export function FormulaireCollecte({
       if (!res.ok) throw new Error(data.error || "Erreur lors de l'envoi");
       const tok: string = data.token;
 
-      // 2. Pièces une par une, avec fastcheck immédiat
+      // 2. Pièces une par une (stockées + fastcheck), métadonnées collectées
+      // pour la finalisation (aucune écriture db.json à cette étape).
+      const piecesMeta: Record<string, unknown> = {};
       for (const doc of DOC_KEYS) {
         setProgression((s) => ({ ...s, [doc]: "envoi" }));
         const fd = new FormData();
@@ -144,27 +146,33 @@ export function FormulaireCollecte({
           setProgression((s) => ({ ...s, [doc]: "erreur" }));
           throw new Error(`${DOC_LABELS[doc]} : ${upData.error || "échec de l'envoi"}`);
         }
+        piecesMeta[doc] = upData.piece;
         setFastchecks((s) => ({ ...s, [doc]: upData.fastcheck }));
         setProgression((s) => ({ ...s, [doc]: upData.fastcheck.ok ? "ok" : "a_verifier" }));
       }
 
       // 2 bis. Plan de prévention signé
+      let planSigneMeta: unknown = null;
       if (planDisponible && planSigne.current) {
         const fd = new FormData();
         fd.set("token", tok);
         fd.set("file", planSigne.current);
         const up = await fetch("/api/soumission/plan-signe", { method: "POST", body: fd });
-        if (!up.ok) {
-          const d = await up.json().catch(() => ({}));
-          throw new Error(`Plan signé : ${d.error || "échec de l'envoi"}`);
-        }
+        const d = await up.json().catch(() => ({}));
+        if (!up.ok) throw new Error(`Plan signé : ${d.error || "échec de l'envoi"}`);
+        planSigneMeta = d.plan;
       }
 
-      // 3. Finalisation
+      // 3. Finalisation (seule écriture db.json)
       const fin = await fetch("/api/soumission/finaliser", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token: tok, attestePlan }),
+        body: JSON.stringify({
+          token: tok,
+          attestePlan,
+          pieces: piecesMeta,
+          planSigne: planSigneMeta,
+        }),
       });
       const finData = await fin.json();
       if (!fin.ok) throw new Error(finData.error || "Erreur lors de la finalisation");
