@@ -522,6 +522,18 @@ function Ligne({
                   <p className="mt-1 text-sm">
                     Plan de prévention attesté le{" "}
                     <strong>{fmt(p.plan.dateAttestation)}</strong>.
+                    {p.plan.signePath && (
+                      <>
+                        {" "}
+                        <a
+                          className="font-bold underline"
+                          href={`/api/fichier?id=${p.id}&doc=plan_signe`}
+                          target="_blank"
+                        >
+                          voir le plan signé
+                        </a>
+                      </>
+                    )}
                   </p>
                 )}
                 <p className="mt-2 flex flex-wrap gap-2">

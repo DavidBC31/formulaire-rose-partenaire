@@ -44,6 +44,8 @@ export function FormulaireCollecte({
   const [effectif, setEffectif] = useState("");
   const [equipe, setEquipe] = useState<Membre[]>([{ prenom: "", nom: "", societe: "" }]);
   const [attestePlan, setAttestePlan] = useState(false);
+  const planSigne = useRef<File | null>(null);
+  const [nomPlanSigne, setNomPlanSigne] = useState("");
   const fichiers = useRef<Partial<Record<DocKey, File>>>({});
   const [nomsFichiers, setNomsFichiers] = useState<Partial<Record<DocKey, string>>>({});
   const [progression, setProgression] = useState<Partial<Record<DocKey, EtapeUpload>>>({});
@@ -95,8 +97,11 @@ export function FormulaireCollecte({
       return setErreur("Le téléphone du responsable est requis.");
     if (!(Number(effectif) > 0))
       return setErreur("Merci d'indiquer le nombre approximatif de personnes sur site.");
+    // Bloc 4 — plan de prévention : attestation cochée + plan signé déposé.
     if (planDisponible && !attestePlan)
       return setErreur("Merci d'attester avoir pris connaissance du plan de prévention.");
+    if (planDisponible && !planSigne.current)
+      return setErreur("Merci de déposer le plan de prévention signé (PDF).");
 
     const membresValides = equipe.filter((m) => m.nom.trim() || m.prenom.trim());
 
@@ -143,6 +148,18 @@ export function FormulaireCollecte({
         setProgression((s) => ({ ...s, [doc]: upData.fastcheck.ok ? "ok" : "a_verifier" }));
       }
 
+      // 2 bis. Plan de prévention signé
+      if (planDisponible && planSigne.current) {
+        const fd = new FormData();
+        fd.set("token", tok);
+        fd.set("file", planSigne.current);
+        const up = await fetch("/api/soumission/plan-signe", { method: "POST", body: fd });
+        if (!up.ok) {
+          const d = await up.json().catch(() => ({}));
+          throw new Error(`Plan signé : ${d.error || "échec de l'envoi"}`);
+        }
+      }
+
       // 3. Finalisation
       const fin = await fetch("/api/soumission/finaliser", {
         method: "POST",
@@ -187,7 +204,8 @@ export function FormulaireCollecte({
         </ul>
         {termine.planAtteste && (
           <p className="mt-4 text-sm">
-            Vous avez attesté avoir pris connaissance du plan de prévention.
+            Vous avez attesté avoir pris connaissance du plan de prévention et
+            déposé sa version signée.
           </p>
         )}
         {!termine.fastcheckOk && (
@@ -442,13 +460,57 @@ export function FormulaireCollecte({
             <span className="text-rose-vif">4.</span> Plan de prévention
           </h2>
           <p className="mb-4 text-sm">
-            Merci de prendre connaissance du plan de prévention du Rose Festival
-            avant votre intervention.
+            Merci de <strong>télécharger</strong> le plan de prévention du Rose
+            Festival, de le <strong>signer</strong>, puis de le
+            <strong> recharger</strong> ci-dessous — et de cocher l&apos;attestation.
           </p>
+
+          <div className="mb-2 text-sm font-bold">
+            <span className="text-rose-vif">1.</span> Télécharger le document
+          </div>
           <a className="btn-outline btn-sm" href="/api/plan-document" target="_blank" rel="noopener">
             ⬇ Télécharger le plan de prévention
           </a>
-          <label className="mt-4 flex cursor-pointer items-start gap-3 rounded-xl border-2 border-black bg-white p-4">
+
+          <div className="mt-5 mb-2 text-sm font-bold">
+            <span className="text-rose-vif">2.</span> Déposer le plan signé (PDF)<Req />
+          </div>
+          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-black bg-white p-3 transition hover:bg-rose/40">
+            <div className="min-w-0">
+              <div className="text-sm font-bold">Plan de prévention signé</div>
+              <div className="truncate text-xs text-black/60">
+                {nomPlanSigne || "Aucun fichier choisi — cliquer pour parcourir"}
+              </div>
+            </div>
+            <span className="shrink-0">
+              {nomPlanSigne ? (
+                <span className="badge bg-rose">prêt</span>
+              ) : (
+                <span className="btn btn-sm pointer-events-none">Choisir</span>
+              )}
+            </span>
+            <input
+              type="file"
+              accept="application/pdf"
+              className="hidden"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (!f) return;
+                if (f.size > MAX_MO * 1024 * 1024) {
+                  setErreur(`"${f.name}" dépasse ${MAX_MO} Mo.`);
+                  return;
+                }
+                setErreur("");
+                planSigne.current = f;
+                setNomPlanSigne(f.name);
+              }}
+            />
+          </label>
+
+          <div className="mt-5 mb-2 text-sm font-bold">
+            <span className="text-rose-vif">3.</span> Attester
+          </div>
+          <label className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-black bg-white p-4">
             <input
               type="checkbox"
               className="mt-1 h-5 w-5 accent-rose-vif"

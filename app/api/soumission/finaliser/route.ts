@@ -33,11 +33,18 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  // Attestation obligatoire du plan de prévention si un document est en ligne.
+  // Plan de prévention (si un document est en ligne) : attestation cochée
+  // ET dépôt du plan signé, tous deux obligatoires.
   const planDisponible = !!db.planDocument;
   if (planDisponible && body?.attestePlan !== true) {
     return NextResponse.json(
       { error: "Merci d'attester avoir pris connaissance du plan de prévention." },
+      { status: 400 }
+    );
+  }
+  if (planDisponible && !p.plan?.signePath) {
+    return NextResponse.json(
+      { error: "Merci de déposer le plan de prévention signé." },
       { status: 400 }
     );
   }
@@ -51,6 +58,7 @@ export async function POST(req: NextRequest) {
   p.dateSoumission = now;
   if (planDisponible) {
     p.plan = {
+      ...p.plan,
       dateAttestation: now,
       ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "inconnue",
     };

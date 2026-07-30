@@ -22,7 +22,9 @@ export async function GET() {
     "Prestataire;Email;Date d'envoi;Statut de réponse;Date de dernière relance;Lien pièces;Plan de prévention",
   ];
   for (const p of db.prestataires) {
-    const plan = p.plan?.dateAttestation ? `Attesté le ${fmt(p.plan.dateAttestation)}` : "";
+    const plan = p.plan?.dateAttestation
+      ? `Attesté${p.plan.signePath ? " + signé" : ""} le ${fmt(p.plan.dateAttestation)}`
+      : "";
     lignes.push(
       [
         p.societe,

@@ -7,7 +7,7 @@ import { DOC_KEYS, type DocKey } from "@/lib/types";
 export const runtime = "nodejs";
 
 /**
- * Consultation d'une pièce par l'admin : ?id=<prestataire>&doc=<kbis|urssaf|fiscale|rcpro>
+ * Consultation par l'admin : ?id=<prestataire>&doc=<kbis|urssaf|fiscale|rcpro|plan_signe>
  * En mode Blob on redirige vers l'URL du fichier, en local on sert le fichier.
  */
 export async function GET(req: NextRequest) {
@@ -19,14 +19,22 @@ export async function GET(req: NextRequest) {
   const p = findById(db, id);
   if (!p) return NextResponse.json({ error: "Prestataire introuvable" }, { status: 404 });
 
-  if (!DOC_KEYS.includes(doc as DocKey))
+  let url: string | undefined;
+  let path: string | undefined;
+  if (doc === "plan_signe") {
+    url = p.plan?.signeUrl;
+    path = p.plan?.signePath;
+  } else if (DOC_KEYS.includes(doc as DocKey)) {
+    url = p.pieces?.[doc as DocKey]?.url;
+    path = p.pieces?.[doc as DocKey]?.path;
+  } else {
     return NextResponse.json({ error: "Document inconnu" }, { status: 400 });
+  }
 
-  const piece = p.pieces?.[doc as DocKey];
-  if (piece?.url) return NextResponse.redirect(piece.url);
-  if (!piece?.path) return NextResponse.json({ error: "Fichier absent" }, { status: 404 });
+  if (url) return NextResponse.redirect(url);
+  if (!path) return NextResponse.json({ error: "Fichier absent" }, { status: 404 });
 
-  const buf = await readLocalFile(piece.path);
+  const buf = await readLocalFile(path);
   if (!buf) return NextResponse.json({ error: "Fichier absent" }, { status: 404 });
   return new NextResponse(new Uint8Array(buf), {
     headers: {

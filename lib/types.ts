@@ -3,10 +3,10 @@ export type DocKey = "kbis" | "urssaf" | "fiscale" | "rcpro";
 export const DOC_KEYS: DocKey[] = ["kbis", "urssaf", "fiscale", "rcpro"];
 
 export const DOC_LABELS: Record<DocKey, string> = {
-  kbis: "Extrait KBIS",
-  urssaf: "Attestation de vigilance URSSAF",
+  kbis: "Extrait KBIS (moins de 6 mois)",
+  urssaf: "Attestation de vigilance URSSAF (moins de 6 mois)",
   fiscale: "Attestation fiscale (moins de 6 mois)",
-  rcpro: "Attestation de responsabilité civile professionnelle",
+  rcpro: "Attestation de responsabilité civile professionnelle (moins de 6 mois)",
 };
 
 export interface FastcheckResult {
@@ -74,11 +74,14 @@ export interface Prestataire {
   dateDerniereRelance?: string;
   driveFolderId?: string;
   driveFolderUrl?: string;
-  // Attestation de prise de connaissance du plan de prévention (case cochée
-  // en fin de formulaire) — remplace l'ancienne signature manuscrite.
+  // Plan de prévention : case « pris connaissance » (dateAttestation) + dépôt
+  // du plan signé par le prestataire (signePath/signeUrl).
   plan?: {
     dateAttestation?: string;
     ip?: string;
+    signePath?: string;
+    signeUrl?: string;
+    signeNom?: string;
   };
   createdAt: string;
   updatedAt: string;

@@ -358,7 +358,9 @@ export async function syncSheet(db: Db): Promise<void> {
         STATUT_LABELS[p.statut],
         fmtD(p.dateDerniereRelance),
         p.driveFolderUrl || "",
-        p.plan?.dateAttestation ? `Attesté le ${fmtD(p.plan.dateAttestation)}` : "",
+        p.plan?.dateAttestation
+          ? `Attesté${p.plan.signePath ? " + signé" : ""} le ${fmtD(p.plan.dateAttestation)}`
+          : "",
       ]);
     }
     const range = (r: string) => encodeURIComponent(`'${suiviTitle}'!${r}`);
