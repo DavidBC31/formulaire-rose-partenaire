@@ -1,5 +1,6 @@
 import { promises as fs } from "fs";
 import path from "path";
+import { randomBytes } from "crypto";
 import type { Db, Prestataire } from "./types";
 import { syncSheet } from "./google";
 
@@ -8,6 +9,7 @@ const DB_FILE = path.join(DATA_DIR, "db.json");
 const BLOB_DB_PATH = "formulaire-rose/db.json";
 
 const blobEnabled = () => !!process.env.BLOB_READ_WRITE_TOKEN;
+const randomBust = () => randomBytes(6).toString("hex");
 
 const EMPTY_DB: Db = { prestataires: [] };
 
@@ -16,9 +18,10 @@ export async function readDb(): Promise<Db> {
     const { head } = await import("@vercel/blob");
     try {
       const meta = await head(BLOB_DB_PATH);
-      // Cache-buster : évite qu'un nœud CDN serve une version périmée du
-      // db.json juste après une écriture (cohérence lecture-après-écriture).
-      const bust = meta.uploadedAt ? new Date(meta.uploadedAt).getTime() : "";
+      // Cache-buster UNIQUE par lecture : force un contournement du cache CDN
+      // (dont la clé sinon collée sur uploadedAt à la seconde peut servir une
+      // version périmée qui ne se corrige pas). On lit ainsi toujours l'origine.
+      const bust = `${meta.uploadedAt ? new Date(meta.uploadedAt).getTime() : ""}-${randomBust()}`;
       const url = `${meta.url}${meta.url.includes("?") ? "&" : "?"}v=${bust}`;
       const res = await fetch(url, { cache: "no-store" });
       return (await res.json()) as Db;
