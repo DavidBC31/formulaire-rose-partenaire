@@ -25,12 +25,10 @@ export function FormulaireCollecte({
   token,
   societeInvitee,
   dejaSoumis,
-  planDisponible,
 }: {
   token?: string;
   societeInvitee?: string;
   dejaSoumis?: boolean;
-  planDisponible?: boolean;
 }) {
   const [societe, setSociete] = useState(societeInvitee || "");
   const [contact, setContact] = useState({ prenom: "", nom: "", email: "", telephone: "" });
@@ -43,9 +41,6 @@ export function FormulaireCollecte({
   });
   const [effectif, setEffectif] = useState("");
   const [equipe, setEquipe] = useState<Membre[]>([{ prenom: "", nom: "", societe: "" }]);
-  const [attestePlan, setAttestePlan] = useState(false);
-  const planSigne = useRef<File | null>(null);
-  const [nomPlanSigne, setNomPlanSigne] = useState("");
   const fichiers = useRef<Partial<Record<DocKey, File>>>({});
   const [nomsFichiers, setNomsFichiers] = useState<Partial<Record<DocKey, string>>>({});
   const [progression, setProgression] = useState<Partial<Record<DocKey, EtapeUpload>>>({});
@@ -55,7 +50,6 @@ export function FormulaireCollecte({
   const [termine, setTermine] = useState<null | {
     fastcheckOk: boolean;
     emailsSimules: boolean;
-    planAtteste: boolean;
   }>(null);
 
   function choisirFichier(doc: DocKey, file: File | undefined) {
@@ -97,11 +91,6 @@ export function FormulaireCollecte({
       return setErreur("Le téléphone du responsable est requis.");
     if (!(Number(effectif) > 0))
       return setErreur("Merci d'indiquer le nombre approximatif de personnes sur site.");
-    // Bloc 4 — plan de prévention : attestation cochée + plan signé déposé.
-    if (planDisponible && !attestePlan)
-      return setErreur("Merci d'attester avoir pris connaissance du plan de prévention.");
-    if (planDisponible && !planSigne.current)
-      return setErreur("Merci de déposer le plan de prévention signé (PDF).");
 
     const membresValides = equipe.filter((m) => m.nom.trim() || m.prenom.trim());
 
@@ -154,18 +143,6 @@ export function FormulaireCollecte({
         setProgression((s) => ({ ...s, [doc]: upData.fastcheck.ok ? "ok" : "a_verifier" }));
       }
 
-      // 2 bis. Plan de prévention signé
-      let planSigneMeta: unknown = null;
-      if (planDisponible && planSigne.current) {
-        const fd = new FormData();
-        fd.set("token", tok);
-        fd.set("file", planSigne.current);
-        const up = await fetch("/api/soumission/plan-signe", { method: "POST", body: fd });
-        const d = await up.json().catch(() => ({}));
-        if (!up.ok) throw new Error(`Plan signé : ${d.error || "échec de l'envoi"}`);
-        planSigneMeta = d.plan;
-      }
-
       // 3. Finalisation (seule écriture db.json)
       const fin = await fetch("/api/soumission/finaliser", {
         method: "POST",
@@ -173,9 +150,7 @@ export function FormulaireCollecte({
         body: JSON.stringify({
           token: tok,
           ...infos,
-          attestePlan,
           pieces: piecesMeta,
-          planSigne: planSigneMeta,
         }),
       });
       const finData = await fin.json();
@@ -183,7 +158,6 @@ export function FormulaireCollecte({
       setTermine({
         fastcheckOk: finData.fastcheckOk,
         emailsSimules: !!finData.emailsSimules,
-        planAtteste: !!planDisponible && attestePlan,
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
@@ -214,12 +188,6 @@ export function FormulaireCollecte({
             </li>
           ))}
         </ul>
-        {termine.planAtteste && (
-          <p className="mt-4 text-sm">
-            Vous avez attesté avoir pris connaissance du plan de prévention et
-            déposé sa version signée.
-          </p>
-        )}
         {!termine.fastcheckOk && (
           <p className="mt-4 text-sm">
             Certaines pièces n&apos;ont pas pu être vérifiées automatiquement
@@ -464,79 +432,6 @@ export function FormulaireCollecte({
           + Ajouter une personne
         </button>
       </section>
-
-      {/* 4 — Plan de prévention */}
-      {planDisponible && (
-        <section className="card p-6">
-          <h2 className="display mb-1 text-2xl">
-            <span className="text-rose-vif">4.</span> Plan de prévention
-          </h2>
-          <p className="mb-4 text-sm">
-            Merci de <strong>télécharger</strong> le plan de prévention du Rose
-            Festival, de le <strong>signer</strong>, puis de le
-            <strong> recharger</strong> ci-dessous — et de cocher l&apos;attestation.
-          </p>
-
-          <div className="mb-2 text-sm font-bold">
-            <span className="text-rose-vif">1.</span> Télécharger le document
-          </div>
-          <a className="btn-outline btn-sm" href="/api/plan-document" target="_blank" rel="noopener">
-            ⬇ Télécharger le plan de prévention
-          </a>
-
-          <div className="mt-5 mb-2 text-sm font-bold">
-            <span className="text-rose-vif">2.</span> Déposer le plan signé (PDF)<Req />
-          </div>
-          <label className="flex cursor-pointer items-center justify-between gap-3 rounded-xl border-2 border-black bg-white p-3 transition hover:bg-rose/40">
-            <div className="min-w-0">
-              <div className="text-sm font-bold">Plan de prévention signé</div>
-              <div className="truncate text-xs text-black/60">
-                {nomPlanSigne || "Aucun fichier choisi — cliquer pour parcourir"}
-              </div>
-            </div>
-            <span className="shrink-0">
-              {nomPlanSigne ? (
-                <span className="badge bg-rose">prêt</span>
-              ) : (
-                <span className="btn btn-sm pointer-events-none">Choisir</span>
-              )}
-            </span>
-            <input
-              type="file"
-              accept="application/pdf"
-              className="hidden"
-              onChange={(e) => {
-                const f = e.target.files?.[0];
-                if (!f) return;
-                if (f.size > MAX_MO * 1024 * 1024) {
-                  setErreur(`"${f.name}" dépasse ${MAX_MO} Mo.`);
-                  return;
-                }
-                setErreur("");
-                planSigne.current = f;
-                setNomPlanSigne(f.name);
-              }}
-            />
-          </label>
-
-          <div className="mt-5 mb-2 text-sm font-bold">
-            <span className="text-rose-vif">3.</span> Attester
-          </div>
-          <label className="flex cursor-pointer items-start gap-3 rounded-xl border-2 border-black bg-white p-4">
-            <input
-              type="checkbox"
-              className="mt-1 h-5 w-5 accent-rose-vif"
-              checked={attestePlan}
-              onChange={(e) => setAttestePlan(e.target.checked)}
-            />
-            <span className="text-sm font-semibold">
-              J&apos;atteste avoir pris connaissance du plan de prévention du
-              Rose Festival et m&apos;engage à le faire respecter par mon équipe
-              présente sur site.<Req />
-            </span>
-          </label>
-        </section>
-      )}
 
       {erreur && (
         <div className="card border-rose-vif bg-white p-4 text-sm font-bold text-rose-vif">

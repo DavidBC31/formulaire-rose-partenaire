@@ -57,41 +57,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Pièces manquantes", manquantes }, { status: 400 });
   }
 
-  // Plan de prévention (si un document est en ligne) : attestation + plan signé.
-  const planDisponible = !!db.planDocument;
-  const planSigne = body?.planSigne;
-  if (planSigne?.signePath) {
-    p.plan = {
-      ...p.plan,
-      signePath: String(planSigne.signePath),
-      signeUrl: planSigne.signeUrl ? String(planSigne.signeUrl) : undefined,
-      signeNom: String(planSigne.signeNom || "plan-signe.pdf"),
-    };
-  }
-  if (planDisponible && body?.attestePlan !== true)
-    return NextResponse.json(
-      { error: "Merci d'attester avoir pris connaissance du plan de prévention." },
-      { status: 400 }
-    );
-  if (planDisponible && !p.plan?.signePath)
-    return NextResponse.json(
-      { error: "Merci de déposer le plan de prévention signé." },
-      { status: 400 }
-    );
-
   const now = new Date().toISOString();
   const ok = fastcheckGlobal(p);
   if (["a_inviter", "en_attente", "recu_a_verifier", "recu_ok"].includes(p.statut)) {
     p.statut = ok ? "recu_ok" : "recu_a_verifier";
   }
   p.dateSoumission = now;
-  if (planDisponible) {
-    p.plan = {
-      ...p.plan,
-      dateAttestation: now,
-      ip: req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "inconnue",
-    };
-  }
 
   // Archive de la liste nominative + lien du dossier Drive.
   if (p.equipe?.length) {
