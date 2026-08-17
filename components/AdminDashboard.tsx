@@ -7,6 +7,7 @@ import {
   DOC_LABELS,
   STATUT_LABELS,
   formulaireCommence,
+  fastcheckResume,
   type PlanDocument,
   type Prestataire,
   type Statut,
@@ -501,29 +502,28 @@ function Ligne({
                   {DOC_KEYS.map((k) => {
                     const piece = p.pieces?.[k];
                     return (
-                      <li key={k} className="flex items-center justify-between gap-2">
-                        <span>{DOC_LABELS[k]}</span>
-                        {piece ? (
-                          <span className="flex items-center gap-2">
-                            <span title={
-                              piece.fastcheck.ok
-                                ? "Nom du prestataire trouvé dans le document"
-                                : piece.fastcheck.textFound
-                                  ? `Nom absent du document (manque : ${piece.fastcheck.tokensMissing.join(", ")})`
-                                  : "PDF scanné : texte illisible, contrôle manuel"
-                            }>
-                              {piece.fastcheck.ok ? "✓" : "⚠"}
+                      <li key={k}>
+                        <div className="flex items-center justify-between gap-2">
+                          <span>{DOC_LABELS[k]}</span>
+                          {piece ? (
+                            <span className="flex items-center gap-2">
+                              <span>{piece.fastcheck.ok ? "✓" : "⚠"}</span>
+                              <a
+                                className="font-bold underline"
+                                href={`/api/fichier?id=${p.id}&doc=${k}`}
+                                target="_blank"
+                              >
+                                voir
+                              </a>
                             </span>
-                            <a
-                              className="font-bold underline"
-                              href={`/api/fichier?id=${p.id}&doc=${k}`}
-                              target="_blank"
-                            >
-                              voir
-                            </a>
-                          </span>
-                        ) : (
-                          <span className="text-black/50">manquante</span>
+                          ) : (
+                            <span className="text-black/50">manquante</span>
+                          )}
+                        </div>
+                        {piece && !piece.fastcheck.ok && (
+                          <div className="text-[11px] font-semibold leading-tight text-amber-700">
+                            {fastcheckResume(piece.fastcheck)}
+                          </div>
                         )}
                       </li>
                     );

@@ -31,18 +31,47 @@ export function significantTokens(societe: string): string[] {
   return tokens.length > 0 ? tokens : normalizeText(societe).split(" ").filter(Boolean);
 }
 
+// Fenêtre de validité des documents : de 6 mois avant le festival jusqu'à la
+// fin du festival (Rose Festival 2026 : 27-29 août → 6 mois avant = 27 février).
+export const DOC_DATE_MIN = Date.UTC(2026, 1, 27); // 27/02/2026
+export const DOC_DATE_MAX = Date.UTC(2026, 7, 29); // 29/08/2026
+export const DOC_PERIODE_LABEL = "27/02/2026 – 29/08/2026";
+
+const MOIS = "janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre".split(" ");
+
+/** Extrait les dates plausibles d'un texte (formats JJ/MM/AAAA et « 1er juin 2025 »). */
+export function extraireDates(raw: string): number[] {
+  const t = raw.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "");
+  const out: number[] = [];
+  const push = (y: number, m: number, d: number) => {
+    if (m < 0 || m > 11 || d < 1 || d > 31 || y < 2000 || y > 2100) return;
+    const ts = Date.UTC(y, m, d);
+    const dt = new Date(ts);
+    if (dt.getUTCFullYear() === y && dt.getUTCMonth() === m && dt.getUTCDate() === d) out.push(ts);
+  };
+  for (const m of t.matchAll(/\b(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})\b/g))
+    push(+m[3], +m[2] - 1, +m[1]);
+  for (const m of t.matchAll(/\b(\d{1,2})(?:er)?\s+([a-zûùé]+)\s+(\d{4})\b/g)) {
+    const mo = MOIS.indexOf(m[2]);
+    if (mo >= 0) push(+m[3], mo, +m[1]);
+  }
+  return out;
+}
+
 export async function fastcheckPdf(
   buffer: Buffer,
   societe: string
 ): Promise<FastcheckResult> {
   const tokens = significantTokens(societe);
   let text = "";
+  let raw = "";
   try {
     const { PDFParse } = await import("pdf-parse");
     const parser = new PDFParse({ data: new Uint8Array(buffer) });
     try {
       const result = await parser.getText();
-      text = normalizeText(result.text || "");
+      raw = result.text || "";
+      text = normalizeText(raw);
     } finally {
       await parser.destroy();
     }
@@ -53,7 +82,17 @@ export async function fastcheckPdf(
 
   // PDF scanné / illisible : pas de texte exploitable → vérification humaine.
   if (text.length < 20) {
-    return { ok: false, textFound: false, score: 0, tokensFound: [], tokensMissing: tokens };
+    return {
+      ok: false,
+      textFound: false,
+      score: 0,
+      tokensFound: [],
+      tokensMissing: tokens,
+      nameOk: false,
+      dateOk: false,
+      dateStatus: "aucune",
+      datesTrouvees: [],
+    };
   }
 
   // Tolérances : texte sans espaces (mots coupés par l'extraction) et
@@ -71,14 +110,33 @@ export async function fastcheckPdf(
   const tokensFound = tokens.filter(matche);
   const tokensMissing = tokens.filter((t) => !tokensFound.includes(t));
   const score = tokens.length ? tokensFound.length / tokens.length : 0;
+  // Cohérent si au moins la moitié des mots significatifs du nom figurent
+  // dans le document (et au moins un).
+  const nameOk = tokensFound.length > 0 && score >= 0.5;
+
+  // Contrôle de la date : au moins une date du document doit tomber dans la
+  // période acceptée (les dates aberrantes tombent d'elles-mêmes hors fenêtre).
+  const dates = extraireDates(raw);
+  const dateStatus: FastcheckResult["dateStatus"] =
+    dates.length === 0
+      ? "aucune"
+      : dates.some((d) => d >= DOC_DATE_MIN && d <= DOC_DATE_MAX)
+        ? "ok"
+        : "hors_periode";
+  const dateOk = dateStatus === "ok";
 
   return {
-    // Cohérent si au moins la moitié des mots significatifs du nom figurent
-    // dans le document (et au moins un) — le reste part en contrôle humain.
-    ok: tokensFound.length > 0 && score >= 0.5,
+    ok: nameOk && dateOk,
     textFound: true,
     score,
     tokensFound,
     tokensMissing,
+    nameOk,
+    dateOk,
+    dateStatus,
+    datesTrouvees: [...new Set(dates)]
+      .sort((a, b) => b - a)
+      .slice(0, 6)
+      .map((ts) => new Date(ts).toISOString().slice(0, 10)),
   };
 }

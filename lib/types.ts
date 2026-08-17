@@ -10,11 +10,17 @@ export const DOC_LABELS: Record<DocKey, string> = {
 };
 
 export interface FastcheckResult {
-  ok: boolean;
+  ok: boolean; // global : nom cohérent ET date dans la période
   textFound: boolean;
   score: number;
   tokensFound: string[];
   tokensMissing: string[];
+  // Contrôle du nom (champs optionnels : absents des anciens contrôles).
+  nameOk?: boolean;
+  // Contrôle de la date du document (doit tomber dans la fenêtre acceptée).
+  dateOk?: boolean;
+  dateStatus?: "ok" | "hors_periode" | "aucune";
+  datesTrouvees?: string[]; // ISO (aaaa-mm-jj), pour information
 }
 
 export interface PieceInfo {
@@ -105,6 +111,25 @@ export function piecesCompletes(p: Prestataire): boolean {
 
 export function fastcheckGlobal(p: Prestataire): boolean {
   return DOC_KEYS.every((k) => p.pieces?.[k]?.fastcheck.ok);
+}
+
+export const DOC_PERIODE = "27/02 – 29/08/2026";
+
+/** Résumé lisible d'un contrôle (nom + date), tolérant aux anciens contrôles. */
+export function fastcheckResume(fc: FastcheckResult): string {
+  if (!fc.textFound) return "PDF scanné / illisible — contrôle manuel";
+  const pbs: string[] = [];
+  const nameOk = fc.nameOk ?? fc.ok;
+  if (!nameOk)
+    pbs.push(
+      `nom absent du document${fc.tokensMissing?.length ? ` (manque : ${fc.tokensMissing.join(", ")})` : ""}`
+    );
+  if (fc.dateStatus === "hors_periode")
+    pbs.push(
+      `date hors période (${DOC_PERIODE})${fc.datesTrouvees?.length ? ` — vue(s) : ${fc.datesTrouvees.join(", ")}` : ""}`
+    );
+  else if (fc.dateStatus === "aucune") pbs.push("aucune date lisible");
+  return pbs.length ? pbs.join(" · ") : "nom présent et date dans la période";
 }
 
 /**
