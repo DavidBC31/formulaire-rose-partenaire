@@ -147,6 +147,30 @@ export function tplTest(): { subject: string; html: string } {
   };
 }
 
+export function tplAlerteEchec(info: {
+  societe: string;
+  email: string;
+  erreur: string;
+}): { subject: string; html: string } {
+  return {
+    subject: `[Formulaire] ⚠ Échec de dépôt — ${info.societe || "prestataire inconnu"}`,
+    html: layout(
+      "Dépôt interrompu",
+      `<p>Une soumission a <strong>échoué en cours de route</strong> (les pièces
+       n'ont pas toutes été enregistrées).</p>
+       <ul>
+         <li>Société : <strong>${info.societe || "(non renseignée)"}</strong></li>
+         <li>Email : ${info.email || "(non renseigné)"}</li>
+         <li>Erreur : ${info.erreur || "(inconnue)"}</li>
+       </ul>
+       <p>Le dossier reste « en attente » : le prestataire peut rouvrir son lien
+       (ses infos sont pré-remplies) et redéposer ses pièces. Vous pouvez aussi
+       le relancer.</p>
+       ${bouton(`${appUrl()}/admin`, "Ouvrir le suivi")}`
+    ),
+  };
+}
+
 export function tplNotifDepot(p: Prestataire, fastcheckOk: boolean): { subject: string; html: string } {
   const plan = p.plan?.dateAttestation ? " · plan attesté" : "";
   return {

@@ -189,7 +189,15 @@ export function FormulaireCollecte({
       });
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch (e) {
-      setErreur(e instanceof Error ? e.message : "Une erreur est survenue.");
+      const message = e instanceof Error ? e.message : "Une erreur est survenue.";
+      setErreur(message);
+      // Alerte l'équipe d'un dépôt interrompu (fire and forget, sans bloquer).
+      fetch("/api/soumission/echec", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ societe, email: contact.email, erreur: message }),
+        keepalive: true,
+      }).catch(() => {});
     } finally {
       setEnvoiEnCours(false);
     }

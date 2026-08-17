@@ -106,3 +106,19 @@ export function piecesCompletes(p: Prestataire): boolean {
 export function fastcheckGlobal(p: Prestataire): boolean {
   return DOC_KEYS.every((k) => p.pieces?.[k]?.fastcheck.ok);
 }
+
+/**
+ * Dossier « en attente » dont le prestataire a commencé le formulaire (infos
+ * saisies ou pièces partielles) mais sans finaliser — à distinguer d'un simple
+ * invité qui n'a encore rien touché.
+ */
+export function formulaireCommence(p: Prestataire): boolean {
+  if (p.statut !== "en_attente") return false;
+  return !!(
+    p.contact?.nom ||
+    p.contact?.prenom ||
+    p.responsableSite?.nom ||
+    p.effectifApprox ||
+    (p.pieces && Object.keys(p.pieces).length > 0)
+  );
+}

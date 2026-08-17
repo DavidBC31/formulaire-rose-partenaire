@@ -28,7 +28,10 @@ type Action =
   | "relancer_tous"
   | "importer_sheet"
   | "importer_liste"
+  | "fusionner"
   | "email_test";
+
+const ORDRE_STATUT = ["a_inviter", "en_attente", "recu_a_verifier", "recu_ok", "valide"];
 
 /** Actions admin sur un dossier (ou en masse pour *_tous). */
 export async function POST(req: NextRequest) {
@@ -179,6 +182,38 @@ export async function POST(req: NextRequest) {
       db.prestataires = db.prestataires.filter((x) => x.id !== p.id);
       await writeDb(db);
       return NextResponse.json({ ok: true });
+    }
+    case "fusionner": {
+      // Fusionne CE dossier (p, source) dans le dossier cible (conservé) :
+      // la cible garde ses valeurs et se complète avec celles de la source ;
+      // union des pièces ; statut le plus avancé. La source est supprimée.
+      const cible = findById(db, String(body?.cibleId || ""));
+      if (!cible || cible.id === p.id)
+        return NextResponse.json({ error: "Dossier cible invalide" }, { status: 400 });
+
+      cible.pieces = cible.pieces || {};
+      for (const k of DOC_KEYS) {
+        if (!cible.pieces[k] && p.pieces?.[k]) cible.pieces[k] = p.pieces[k];
+      }
+      if (!(cible.contact?.nom || cible.contact?.prenom) && p.contact) cible.contact = p.contact;
+      if (!cible.responsableSite?.nom && p.responsableSite) cible.responsableSite = p.responsableSite;
+      if (!cible.effectifApprox && p.effectifApprox) cible.effectifApprox = p.effectifApprox;
+      if (!cible.equipe?.length && p.equipe?.length) cible.equipe = p.equipe;
+      if (!cible.dateSoumission && p.dateSoumission) cible.dateSoumission = p.dateSoumission;
+      if (!cible.plan?.signePath && !cible.plan?.dateAttestation && p.plan)
+        cible.plan = { ...cible.plan, ...p.plan };
+      if (!cible.dateInvitation && p.dateInvitation) cible.dateInvitation = p.dateInvitation;
+      if (!cible.driveFolderId && p.driveFolderId) {
+        cible.driveFolderId = p.driveFolderId;
+        cible.driveFolderUrl = p.driveFolderUrl;
+      }
+      if (ORDRE_STATUT.indexOf(p.statut) > ORDRE_STATUT.indexOf(cible.statut))
+        cible.statut = p.statut;
+      cible.updatedAt = now;
+
+      db.prestataires = db.prestataires.filter((x) => x.id !== p.id);
+      await writeDb(db);
+      return NextResponse.json({ ok: true, cible: cible.societe });
     }
     case "recontroler": {
       // Rejoue le fastcheck sur les pièces déjà stockées (utile après une

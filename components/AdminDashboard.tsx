@@ -6,6 +6,7 @@ import {
   DOC_KEYS,
   DOC_LABELS,
   STATUT_LABELS,
+  formulaireCommence,
   type PlanDocument,
   type Prestataire,
   type Statut,
@@ -92,6 +93,34 @@ export function AdminDashboard({
         );
       else if (typeof data.traites === "number")
         setMessage(`${data.traites} email(s) envoyé(s).`);
+      router.refresh();
+    } catch (e) {
+      setMessage(`★ ${e instanceof Error ? e.message : "Erreur"}`);
+    } finally {
+      setEnCours(null);
+    }
+  }
+
+  async function fusionner(sourceId: string, cibleId: string) {
+    if (!cibleId) return;
+    const cibleName = prestataires.find((p) => p.id === cibleId)?.societe;
+    if (
+      !window.confirm(
+        `Fusionner ce dossier dans « ${cibleName} » ? Ce dossier-ci sera supprimé, l'autre conservé et complété avec les infos manquantes.`
+      )
+    )
+      return;
+    setMessage("");
+    setEnCours(`${sourceId}:fusionner`);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sourceId, cibleId, action: "fusionner" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Fusion impossible");
+      setMessage(`Dossier fusionné dans « ${data.cible} ».`);
       router.refresh();
     } catch (e) {
       setMessage(`★ ${e instanceof Error ? e.message : "Erreur"}`);
@@ -357,9 +386,11 @@ export function AdminDashboard({
               <Ligne
                 key={p.id}
                 p={p}
+                autres={prestataires}
                 ouvert={ouvert === p.id}
                 basculer={() => setOuvert(ouvert === p.id ? null : p.id)}
                 action={action}
+                fusionner={fusionner}
                 enCours={enCours}
               />
             ))}
@@ -372,17 +403,22 @@ export function AdminDashboard({
 
 function Ligne({
   p,
+  autres,
   ouvert,
   basculer,
   action,
+  fusionner,
   enCours,
 }: {
   p: Prestataire;
+  autres: Prestataire[];
   ouvert: boolean;
   basculer: () => void;
   action: (id: string, act: string, confirmation?: string) => Promise<void>;
+  fusionner: (sourceId: string, cibleId: string) => Promise<void>;
   enCours: string | null;
 }) {
+  const [cible, setCible] = useState("");
   const piecesRecues = DOC_KEYS.filter((k) => p.pieces?.[k]).length;
   const fastcheckOk = DOC_KEYS.every((k) => p.pieces?.[k]?.fastcheck.ok);
   const busy = (act: string) => enCours === `${p.id}:${act}`;
@@ -400,6 +436,15 @@ function Ligne({
         <td className="px-3 py-2">{fmt(p.dateInvitation)}</td>
         <td className="px-3 py-2">
           <span className={`badge ${BADGE_STYLE[p.statut]}`}>{STATUT_LABELS[p.statut]}</span>
+          {p.statut === "en_attente" && (
+            <div className="mt-1 text-[11px] font-semibold leading-tight">
+              {formulaireCommence(p) ? (
+                <span className="text-amber-700">formulaire commencé · pièces manquantes</span>
+              ) : (
+                <span className="text-black/45">rien reçu</span>
+              )}
+            </div>
+          )}
         </td>
         <td className="px-3 py-2">{fmt(p.dateDerniereRelance)}</td>
         <td className="px-3 py-2">
@@ -583,6 +628,36 @@ function Ligne({
                     Supprimer
                   </button>
                 </p>
+                <div className="mt-3 border-t border-black/10 pt-3">
+                  <div className="label">Fusionner (doublon)</div>
+                  <p className="mb-2 text-xs text-black/60">
+                    Rattache CE dossier à un autre (ce dossier-ci sera supprimé,
+                    l&apos;autre conservé et complété).
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <select
+                      className="input w-auto max-w-[16rem] text-sm"
+                      value={cible}
+                      onChange={(e) => setCible(e.target.value)}
+                    >
+                      <option value="">— choisir le dossier à conserver —</option>
+                      {autres
+                        .filter((x) => x.id !== p.id)
+                        .map((x) => (
+                          <option key={x.id} value={x.id}>
+                            {x.societe} ({STATUT_LABELS[x.statut]})
+                          </option>
+                        ))}
+                    </select>
+                    <button
+                      className="btn-outline btn-sm"
+                      disabled={!cible || enCours === `${p.id}:fusionner`}
+                      onClick={() => fusionner(p.id, cible)}
+                    >
+                      Fusionner
+                    </button>
+                  </div>
+                </div>
               </div>
             </div>
           </td>
