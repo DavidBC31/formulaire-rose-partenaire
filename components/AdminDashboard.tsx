@@ -85,6 +85,11 @@ export function AdminDashboard({
           `${data.invites} invitation(s) envoyée(s) depuis le Sheet (sur ${data.lignes} ligne(s)).` +
             (data.erreurs?.length ? ` ${data.erreurs.length} ignorée(s) : ${data.erreurs.join(" · ")}` : "")
         );
+      else if (act === "importer_liste")
+        setMessage(
+          `Liste de diffusion chargée : ${data.crees} nouveau(x) dossier(s) créé(s), ` +
+            `${data.demarres} relance(s) démarrée(s), sur ${data.total} ligne(s). Aucun email envoyé.`
+        );
       else if (typeof data.traites === "number")
         setMessage(`${data.traites} email(s) envoyé(s).`);
       router.refresh();
@@ -187,16 +192,31 @@ export function AdminDashboard({
         {sheetUrl && (
           <button
             className="btn btn-sm"
+            disabled={enCours === "null:importer_liste"}
+            onClick={() =>
+              action(
+                null,
+                "importer_liste",
+                "Charger la liste de diffusion (prestataires déjà invités par email) comme « en attente », sans renvoyer d'email ? Démarre les relances du lundi."
+              )
+            }
+          >
+            {enCours === "null:importer_liste" ? "Chargement…" : "⇪ Charger la liste (diffusion)"}
+          </button>
+        )}
+        {sheetUrl && (
+          <button
+            className="btn-outline btn-sm"
             disabled={enCours === "null:importer_sheet"}
             onClick={() =>
               action(
                 null,
                 "importer_sheet",
-                "Importer l'onglet « À inviter » du Google Sheet et envoyer les invitations aux nouvelles lignes ?"
+                "Importer l'onglet « À inviter » du Google Sheet ET envoyer les invitations aux nouvelles lignes ?"
               )
             }
           >
-            {enCours === "null:importer_sheet" ? "Import…" : "⇪ Importer + inviter (Sheet)"}
+            {enCours === "null:importer_sheet" ? "Import…" : "⇪ Importer + inviter (À inviter)"}
           </button>
         )}
         <button

@@ -320,6 +320,38 @@ async function ensureInviteTab(id: string, titles: SheetTab[]): Promise<void> {
   );
 }
 
+/** Onglet « Liste de diffusion » du plan de prévention : la vraie liste des
+ * prestataires/exposants invités (colonne A = nom, colonne C = email). */
+const DIFFUSION_TAB = "PLAN DE PREVENTION _ Liste de diffusion";
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+
+/**
+ * Lit la liste de diffusion (Société colonne A, Email colonne C). S'arrête au
+ * premier « Food & Beverage » (section gérée à part) et ne garde que les
+ * lignes avec un email valide (premier email si plusieurs).
+ */
+export async function readDiffusionRows(): Promise<{ societe: string; email: string }[]> {
+  if (!isSheetConfigured()) return [];
+  const id = process.env.GOOGLE_SHEET_ID!;
+  const res = await gfetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${id}/values/${encodeURIComponent(
+      `'${DIFFUSION_TAB}'!A2:C300`
+    )}`
+  );
+  const rows = ((await res.json()).values || []) as string[][];
+  const out: { societe: string; email: string }[] = [];
+  for (const r of rows) {
+    const societe = String(r[0] || "").trim();
+    if (/food/i.test(societe)) break; // section « Food & Beverage » : fin des invités
+    const email = String(r[2] || "")
+      .split(/[\s,;]+/)
+      .map((e) => e.trim())
+      .find((e) => EMAIL_RE.test(e));
+    if (societe && email) out.push({ societe, email });
+  }
+  return out;
+}
+
 /** Lit les lignes (Société | Email) saisies dans l'onglet « À inviter ». */
 export async function readInvitationRows(): Promise<{ societe: string; email: string }[]> {
   if (!isSheetConfigured()) return [];

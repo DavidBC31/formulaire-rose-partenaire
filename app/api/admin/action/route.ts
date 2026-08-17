@@ -11,8 +11,9 @@ import {
 } from "@/lib/mailer";
 import { DOC_KEYS, fastcheckGlobal, piecesCompletes, type Prestataire } from "@/lib/types";
 import { fastcheckPdf, normalizeText } from "@/lib/fastcheck";
+import { matchPrestataire } from "@/lib/soumission";
 import { readLocalFile } from "@/lib/files";
-import { readInvitationRows } from "@/lib/google";
+import { readInvitationRows, readDiffusionRows } from "@/lib/google";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -26,6 +27,7 @@ type Action =
   | "inviter_tous"
   | "relancer_tous"
   | "importer_sheet"
+  | "importer_liste"
   | "email_test";
 
 /** Actions admin sur un dossier (ou en masse pour *_tous). */
@@ -40,6 +42,47 @@ export async function POST(req: NextRequest) {
     const to = String(body?.email || "").trim() || MAIL_FROM;
     const res = await sendMail({ to, ...tplTest() });
     return NextResponse.json({ ok: true, dryRun: res.dryRun, to });
+  }
+
+  if (action === "importer_liste") {
+    // Charge la liste de diffusion (prestataires déjà invités par email de
+    // l'équipe) comme « en attente », SANS renvoyer d'email et sans doublon.
+    // Démarre le compteur de relances automatiques du lundi.
+    let lignes: { societe: string; email: string }[];
+    try {
+      lignes = await readDiffusionRows();
+    } catch (e) {
+      return NextResponse.json(
+        { error: `Lecture de la liste impossible : ${e instanceof Error ? e.message : e}` },
+        { status: 400 }
+      );
+    }
+    let crees = 0;
+    let demarres = 0;
+    for (const { societe, email } of lignes) {
+      const p = matchPrestataire(db.prestataires, { societe, email });
+      if (!p) {
+        db.prestataires.push({
+          id: randomUUID(),
+          societe,
+          email: email.toLowerCase(),
+          token: randomBytes(16).toString("hex"),
+          statut: "en_attente",
+          dateInvitation: now,
+          createdAt: now,
+          updatedAt: now,
+        } satisfies Prestataire);
+        crees++;
+      } else if (p.statut === "a_inviter" || (p.statut === "en_attente" && !p.dateInvitation)) {
+        // Dossier déjà là mais pas encore « invité » : on démarre les relances.
+        p.statut = "en_attente";
+        if (!p.dateInvitation) p.dateInvitation = now;
+        p.updatedAt = now;
+        demarres++;
+      }
+    }
+    await writeDb(db);
+    return NextResponse.json({ ok: true, total: lignes.length, crees, demarres });
   }
 
   if (action === "importer_sheet") {
