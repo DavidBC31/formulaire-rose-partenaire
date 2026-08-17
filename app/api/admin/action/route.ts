@@ -13,7 +13,7 @@ import { DOC_KEYS, fastcheckGlobal, piecesCompletes, type Prestataire } from "@/
 import { fastcheckPdf, normalizeText } from "@/lib/fastcheck";
 import { matchPrestataire } from "@/lib/soumission";
 import { readLocalFile } from "@/lib/files";
-import { readInvitationRows, readDiffusionRows } from "@/lib/google";
+import { readInvitationRows, readDiffusionRows, ocrPdf } from "@/lib/google";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -49,7 +49,8 @@ async function recontrolerDossier(p: Prestataire, now: string): Promise<number> 
       buf = await readLocalFile(piece.path);
     }
     if (!buf) continue;
-    piece.fastcheck = await fastcheckPdf(buf, p.societe);
+    // Recontrôle : repli OCR (Google Drive) si le PDF est scanné/illisible.
+    piece.fastcheck = await fastcheckPdf(buf, p.societe, ocrPdf);
     n++;
   }
   if (piecesCompletes(p) && ["recu_ok", "recu_a_verifier"].includes(p.statut)) {

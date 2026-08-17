@@ -61,29 +61,10 @@ export function extraireDates(raw: string): number[] {
   return out;
 }
 
-export async function fastcheckPdf(
-  buffer: Buffer,
-  societe: string
-): Promise<FastcheckResult> {
-  const tokens = significantTokens(societe);
-  let text = "";
-  let raw = "";
-  try {
-    const { PDFParse } = await import("pdf-parse");
-    const parser = new PDFParse({ data: new Uint8Array(buffer) });
-    try {
-      const result = await parser.getText();
-      raw = result.text || "";
-      text = normalizeText(raw);
-    } finally {
-      await parser.destroy();
-    }
-  } catch (e) {
-    // Ne jamais avaler l'erreur : c'est la seule trace en prod (logs Vercel).
-    console.error("[FASTCHECK] extraction du texte PDF impossible :", e);
-  }
-
-  // PDF scanné / illisible : pas de texte exploitable → vérification humaine.
+/** Évalue nom + date à partir d'un texte de document déjà extrait. */
+function evaluer(raw: string, tokens: string[]): FastcheckResult {
+  const text = normalizeText(raw);
+  // PDF scanné / illisible : pas de texte exploitable.
   if (text.length < 20) {
     return {
       ok: false,
@@ -113,12 +94,8 @@ export async function fastcheckPdf(
   const tokensFound = tokens.filter(matche);
   const tokensMissing = tokens.filter((t) => !tokensFound.includes(t));
   const score = tokens.length ? tokensFound.length / tokens.length : 0;
-  // Cohérent si au moins la moitié des mots significatifs du nom figurent
-  // dans le document (et au moins un).
   const nameOk = tokensFound.length > 0 && score >= 0.5;
 
-  // Contrôle de la date : au moins une date du document doit tomber dans la
-  // période acceptée (les dates aberrantes tombent d'elles-mêmes hors fenêtre).
   const dates = extraireDates(raw);
   const dateStatus: FastcheckResult["dateStatus"] =
     dates.length === 0
@@ -142,4 +119,46 @@ export async function fastcheckPdf(
       .slice(0, 6)
       .map((ts) => new Date(ts).toISOString().slice(0, 10)),
   };
+}
+
+/**
+ * Fastcheck (nom + date). `ocr` optionnel : si le PDF a peu de texte (scanné),
+ * on tente une lecture OCR et on garde le meilleur résultat. L'OCR est lent,
+ * donc réservé au recontrôle admin — jamais au dépôt du prestataire.
+ */
+export async function fastcheckPdf(
+  buffer: Buffer,
+  societe: string,
+  ocr?: (buf: Buffer) => Promise<string>
+): Promise<FastcheckResult> {
+  const tokens = significantTokens(societe);
+  let raw = "";
+  try {
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: new Uint8Array(buffer) });
+    try {
+      raw = (await parser.getText()).text || "";
+    } finally {
+      await parser.destroy();
+    }
+  } catch (e) {
+    console.error("[FASTCHECK] extraction du texte PDF impossible :", e);
+  }
+
+  let res = evaluer(raw, tokens);
+
+  // Repli OCR : texte trop court (PDF image/scanné) → on tente Google Drive OCR.
+  if (ocr && raw.trim().length < 400) {
+    try {
+      const ocrText = await ocr(buffer);
+      if (ocrText && ocrText.trim().length > raw.trim().length) {
+        const res2 = evaluer(ocrText, tokens);
+        res2.viaOcr = true;
+        res = res2;
+      }
+    } catch (e) {
+      console.error("[FASTCHECK] OCR impossible :", e);
+    }
+  }
+  return res;
 }

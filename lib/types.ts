@@ -21,6 +21,7 @@ export interface FastcheckResult {
   dateOk?: boolean;
   dateStatus?: "ok" | "hors_periode" | "aucune";
   datesTrouvees?: string[]; // ISO (aaaa-mm-jj), pour information
+  viaOcr?: boolean; // texte obtenu par OCR (document scanné)
 }
 
 export interface PieceInfo {
@@ -129,6 +130,7 @@ export function fastcheckResume(fc: FastcheckResult): string {
       `document trop ancien (aucune date ≥ ${DOC_PERIODE})${fc.datesTrouvees?.length ? ` — vue(s) : ${fc.datesTrouvees.join(", ")}` : ""}`
     );
   else if (fc.dateStatus === "aucune") pbs.push("aucune date lisible");
+  if (fc.viaOcr) pbs.push("lu par OCR");
   return pbs.length ? pbs.join(" · ") : "nom présent et date valide";
 }
 

@@ -254,6 +254,60 @@ export async function mirrorToDrive(
   }
 }
 
+/**
+ * OCR d'un PDF scanné via Google Drive : on l'importe temporairement en le
+ * convertissant en Google Doc (Drive l'OCRise, français), on exporte le texte,
+ * puis on supprime le Doc temporaire. Réutilise le compte de service — aucun
+ * service tiers. Renvoie "" si indisponible ou en cas d'échec.
+ */
+export async function ocrPdf(data: Buffer): Promise<string> {
+  if (!isDriveConfigured()) return "";
+  const parent = process.env.GOOGLE_DRIVE_FOLDER_ID!;
+  let docId: string | undefined;
+  try {
+    const boundary = `ocr${data.length}${parent.slice(0, 6)}`;
+    const body = Buffer.concat([
+      Buffer.from(
+        `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n` +
+          JSON.stringify({
+            name: "_ocr_temp",
+            mimeType: "application/vnd.google-apps.document",
+            parents: [parent],
+          }) +
+          `\r\n--${boundary}\r\nContent-Type: application/pdf\r\n\r\n`
+      ),
+      data,
+      Buffer.from(`\r\n--${boundary}--`),
+    ]);
+    const created = await (
+      await gfetch(
+        "https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true&ocrLanguage=fr&fields=id",
+        {
+          method: "POST",
+          headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+          body: new Uint8Array(body),
+        }
+      )
+    ).json();
+    docId = created.id as string;
+    const txt = await (
+      await gfetch(
+        `https://www.googleapis.com/drive/v3/files/${docId}/export?mimeType=text/plain&supportsAllDrives=true`
+      )
+    ).text();
+    return txt || "";
+  } catch (e) {
+    console.error("[OCR] échec :", e);
+    return "";
+  } finally {
+    if (docId)
+      await gfetch(
+        `https://www.googleapis.com/drive/v3/files/${docId}?supportsAllDrives=true`,
+        { method: "DELETE" }
+      ).catch(() => {});
+  }
+}
+
 /** Renvoie (en le créant au besoin) le dossier Drive du prestataire. */
 export async function driveFolderFor(
   societe: string
