@@ -24,6 +24,7 @@ type Action =
   | "valider"
   | "supprimer"
   | "recontroler"
+  | "recontroler_tous"
   | "inviter_tous"
   | "relancer_tous"
   | "importer_sheet"
@@ -32,6 +33,31 @@ type Action =
   | "email_test";
 
 const ORDRE_STATUT = ["a_inviter", "en_attente", "recu_a_verifier", "recu_ok", "valide"];
+
+/** Rejoue le fastcheck sur les pièces déjà stockées d'un dossier (récupère le
+ * fichier depuis le Blob/local). Retourne le nombre de pièces recontrôlées. */
+async function recontrolerDossier(p: Prestataire, now: string): Promise<number> {
+  let n = 0;
+  for (const key of DOC_KEYS) {
+    const piece = p.pieces?.[key];
+    if (!piece) continue;
+    let buf: Buffer | null = null;
+    if (piece.url) {
+      const res = await fetch(piece.url, { cache: "no-store" });
+      if (res.ok) buf = Buffer.from(await res.arrayBuffer());
+    } else {
+      buf = await readLocalFile(piece.path);
+    }
+    if (!buf) continue;
+    piece.fastcheck = await fastcheckPdf(buf, p.societe);
+    n++;
+  }
+  if (piecesCompletes(p) && ["recu_ok", "recu_a_verifier"].includes(p.statut)) {
+    p.statut = fastcheckGlobal(p) ? "recu_ok" : "recu_a_verifier";
+  }
+  p.updatedAt = now;
+  return n;
+}
 
 /** Actions admin sur un dossier (ou en masse pour *_tous). */
 export async function POST(req: NextRequest) {
@@ -135,6 +161,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true, invites, lignes: lignes.length, erreurs });
   }
 
+  if (action === "recontroler_tous") {
+    const cibles = db.prestataires.filter((x) => x.pieces && Object.keys(x.pieces).length > 0);
+    let pieces = 0;
+    for (const x of cibles) pieces += await recontrolerDossier(x, now);
+    await writeDb(db);
+    return NextResponse.json({ ok: true, dossiers: cibles.length, pieces });
+  }
+
   if (action === "inviter_tous" || action === "relancer_tous") {
     const cibles = db.prestataires.filter((p) =>
       action === "inviter_tous" ? p.statut === "a_inviter" : p.statut === "en_attente"
@@ -216,27 +250,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, cible: cible.societe });
     }
     case "recontroler": {
-      // Rejoue le fastcheck sur les pièces déjà stockées (utile après une
-      // évolution du contrôle : pas besoin de redemander les fichiers).
-      let recontroles = 0;
-      for (const key of DOC_KEYS) {
-        const piece = p.pieces?.[key];
-        if (!piece) continue;
-        let buf: Buffer | null = null;
-        if (piece.url) {
-          const res = await fetch(piece.url, { cache: "no-store" });
-          if (res.ok) buf = Buffer.from(await res.arrayBuffer());
-        } else {
-          buf = await readLocalFile(piece.path);
-        }
-        if (!buf) continue;
-        piece.fastcheck = await fastcheckPdf(buf, p.societe);
-        recontroles++;
-      }
-      if (piecesCompletes(p) && ["recu_ok", "recu_a_verifier"].includes(p.statut)) {
-        p.statut = fastcheckGlobal(p) ? "recu_ok" : "recu_a_verifier";
-      }
-      p.updatedAt = now;
+      const recontroles = await recontrolerDossier(p, now);
       await writeDb(db);
       return NextResponse.json({ ok: true, recontroles, statut: p.statut });
     }

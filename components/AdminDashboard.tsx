@@ -92,6 +92,8 @@ export function AdminDashboard({
           `Liste de diffusion chargée : ${data.crees} nouveau(x) dossier(s) créé(s), ` +
             `${data.demarres} relance(s) démarrée(s), sur ${data.total} ligne(s). Aucun email envoyé.`
         );
+      else if (act === "recontroler_tous")
+        setMessage(`Recontrôle terminé : ${data.pieces} pièce(s) sur ${data.dossiers} dossier(s).`);
       else if (typeof data.traites === "number")
         setMessage(`${data.traites} email(s) envoyé(s).`);
       router.refresh();
@@ -266,6 +268,19 @@ export function AdminDashboard({
           }
         >
           ↻ Relancer tous
+        </button>
+        <button
+          className="btn-outline btn-sm"
+          disabled={enCours === "null:recontroler_tous"}
+          onClick={() =>
+            action(
+              null,
+              "recontroler_tous",
+              "Rejouer le fastcheck (nom + date) sur tous les dossiers déjà reçus ?"
+            )
+          }
+        >
+          {enCours === "null:recontroler_tous" ? "Recontrôle…" : "↻ Recontrôler tout"}
         </button>
         <a className="btn-outline btn-sm" href="/api/admin/export">
           ⬇ Export CSV
