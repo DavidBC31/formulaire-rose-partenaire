@@ -19,7 +19,7 @@ export default async function Home({
           Pièces
           <br />
           <span className="text-rose-vif drop-shadow-[3px_3px_0_#000]">
-            prestataires
+            prestataires et exposants
           </span>
         </div>
         <p className="mx-auto mt-4 max-w-xl font-medium">
