@@ -352,10 +352,10 @@ export function FormulaireCollecte({
                 )}
                 {dateKo && (
                   <p className="mt-1 px-1 text-xs font-semibold text-amber-700">
-                    ★ Attention : la date du document semble en dehors de la
-                    période attendue (27/02 – 29/08/2026). Vérifiez qu&apos;il
-                    s&apos;agit d&apos;un document récent et valide ; sinon notre
-                    équipe le contrôlera manuellement.
+                    ★ Attention : le document semble trop ancien (aucune date
+                    récente détectée, à partir du 27/02/2026). Vérifiez qu&apos;il
+                    est valide pour la période du festival ; sinon notre équipe le
+                    contrôlera manuellement.
                   </p>
                 )}
                 {nonLisible && (

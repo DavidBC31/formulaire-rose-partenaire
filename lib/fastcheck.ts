@@ -31,11 +31,14 @@ export function significantTokens(societe: string): string[] {
   return tokens.length > 0 ? tokens : normalizeText(societe).split(" ").filter(Boolean);
 }
 
-// Fenêtre de validité des documents : de 6 mois avant le festival jusqu'à la
-// fin du festival (Rose Festival 2026 : 27-29 août → 6 mois avant = 27 février).
-export const DOC_DATE_MIN = Date.UTC(2026, 1, 27); // 27/02/2026
-export const DOC_DATE_MAX = Date.UTC(2026, 7, 29); // 29/08/2026
-export const DOC_PERIODE_LABEL = "27/02/2026 – 29/08/2026";
+// Validité des documents : le doc doit être « récent ou valable pour le
+// festival » = porter au moins une date ≥ 6 mois avant le festival
+// (27/02/2026). Borne haute = fin 2027 : accepte les dates de validité qui
+// courent au-delà du festival (RC pro/assurances annuelles) tout en excluant
+// les dates aberrantes mal lues (ex. 2086, 2124).
+export const DOC_DATE_MIN = Date.UTC(2026, 1, 27); // 27/02/2026 (6 mois avant)
+export const DOC_DATE_MAX = Date.UTC(2027, 11, 31); // borne haute plausible
+export const DOC_PERIODE_LABEL = "à partir du 27/02/2026";
 
 const MOIS = "janvier fevrier mars avril mai juin juillet aout septembre octobre novembre decembre".split(" ");
 

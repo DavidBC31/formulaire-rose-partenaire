@@ -113,7 +113,7 @@ export function fastcheckGlobal(p: Prestataire): boolean {
   return DOC_KEYS.every((k) => p.pieces?.[k]?.fastcheck.ok);
 }
 
-export const DOC_PERIODE = "27/02 – 29/08/2026";
+export const DOC_PERIODE = "27/02/2026";
 
 /** Résumé lisible d'un contrôle (nom + date), tolérant aux anciens contrôles. */
 export function fastcheckResume(fc: FastcheckResult): string {
@@ -126,10 +126,10 @@ export function fastcheckResume(fc: FastcheckResult): string {
     );
   if (fc.dateStatus === "hors_periode")
     pbs.push(
-      `date hors période (${DOC_PERIODE})${fc.datesTrouvees?.length ? ` — vue(s) : ${fc.datesTrouvees.join(", ")}` : ""}`
+      `document trop ancien (aucune date ≥ ${DOC_PERIODE})${fc.datesTrouvees?.length ? ` — vue(s) : ${fc.datesTrouvees.join(", ")}` : ""}`
     );
   else if (fc.dateStatus === "aucune") pbs.push("aucune date lisible");
-  return pbs.length ? pbs.join(" · ") : "nom présent et date dans la période";
+  return pbs.length ? pbs.join(" · ") : "nom présent et date valide";
 }
 
 /**
