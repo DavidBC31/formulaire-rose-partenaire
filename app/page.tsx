@@ -33,6 +33,16 @@ export default async function Home({
         token={prestataire?.token}
         societeInvitee={prestataire?.societe}
         dejaSoumis={!!prestataire?.dateSoumission}
+        initial={
+          prestataire
+            ? {
+                contact: prestataire.contact,
+                responsable: prestataire.responsableSite,
+                effectif: prestataire.effectifApprox,
+                equipe: prestataire.equipe,
+              }
+            : undefined
+        }
       />
     </div>
   );

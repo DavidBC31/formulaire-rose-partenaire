@@ -1,8 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomBytes, randomUUID } from "crypto";
-import { readDb, writeDb, findByToken } from "@/lib/db";
-import { normalizeText } from "@/lib/fastcheck";
-import { applyInfo } from "@/lib/soumission";
+import { readDb, writeDb } from "@/lib/db";
+import { applyInfo, matchPrestataire } from "@/lib/soumission";
 import type { Prestataire } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -25,12 +24,12 @@ export async function POST(req: NextRequest) {
   const db = await readDb();
   const now = new Date().toISOString();
 
-  // Rattachement : token d'invitation > correspondance nom société > création.
-  let p: Prestataire | undefined = findByToken(db, String(body.token || ""));
-  if (!p) {
-    const norm = normalizeText(societe);
-    p = db.prestataires.find((x) => normalizeText(x.societe) === norm);
-  }
+  // Rattachement robuste : token > email > nom (avec/sans forme juridique).
+  let p: Prestataire | undefined = matchPrestataire(db.prestataires, {
+    token: String(body.token || ""),
+    societe,
+    email,
+  });
   if (!p) {
     p = {
       id: randomUUID(),

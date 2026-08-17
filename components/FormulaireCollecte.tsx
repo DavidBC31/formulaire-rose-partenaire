@@ -21,26 +21,54 @@ const Req = () => (
   </span>
 );
 
+interface InitialData {
+  contact?: { prenom?: string; nom?: string; email?: string; telephone?: string };
+  responsable?: {
+    prenom?: string;
+    nom?: string;
+    email?: string;
+    telephone?: string;
+    societe?: string;
+  };
+  effectif?: number;
+  equipe?: Membre[];
+}
+
 export function FormulaireCollecte({
   token,
   societeInvitee,
   dejaSoumis,
+  initial,
 }: {
   token?: string;
   societeInvitee?: string;
   dejaSoumis?: boolean;
+  initial?: InitialData;
 }) {
   const [societe, setSociete] = useState(societeInvitee || "");
-  const [contact, setContact] = useState({ prenom: "", nom: "", email: "", telephone: "" });
-  const [responsable, setResponsable] = useState({
-    prenom: "",
-    nom: "",
-    email: "",
-    telephone: "",
-    societe: "",
+  const [contact, setContact] = useState({
+    prenom: initial?.contact?.prenom || "",
+    nom: initial?.contact?.nom || "",
+    email: initial?.contact?.email || "",
+    telephone: initial?.contact?.telephone || "",
   });
-  const [effectif, setEffectif] = useState("");
-  const [equipe, setEquipe] = useState<Membre[]>([{ prenom: "", nom: "", societe: "" }]);
+  const [responsable, setResponsable] = useState({
+    prenom: initial?.responsable?.prenom || "",
+    nom: initial?.responsable?.nom || "",
+    email: initial?.responsable?.email || "",
+    telephone: initial?.responsable?.telephone || "",
+    societe: initial?.responsable?.societe || "",
+  });
+  const [effectif, setEffectif] = useState(initial?.effectif ? String(initial.effectif) : "");
+  const [equipe, setEquipe] = useState<Membre[]>(
+    initial?.equipe?.length
+      ? initial.equipe.map((m) => ({
+          prenom: m.prenom || "",
+          nom: m.nom || "",
+          societe: m.societe || "",
+        }))
+      : [{ prenom: "", nom: "", societe: "" }]
+  );
   const fichiers = useRef<Partial<Record<DocKey, File>>>({});
   const [nomsFichiers, setNomsFichiers] = useState<Partial<Record<DocKey, string>>>({});
   const [progression, setProgression] = useState<Partial<Record<DocKey, EtapeUpload>>>({});
