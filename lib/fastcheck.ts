@@ -176,12 +176,15 @@ export function classifyDocType(fileName: string, text = ""): DocKey | null {
   const n = normalizeText(fileName);
   // Noms miroir du formulaire : kbis.pdf, urssaf.pdf, fiscale.pdf, rcpro.pdf.
   for (const k of DOC_KEYS) if (n === k || n.startsWith(k + " ")) return k;
+  // normalizeText a déjà mis en minuscules/sans accents/mots séparés par des
+  // espaces : une simple recherche de sous-chaîne suffit et évite les regex.
   const parMots = (s: string): DocKey | null => {
     if (!s) return null;
-    if (/(kbis|k bis|extrait|immatriculation|rcs)/.test(s)) return "kbis";
-    if (/(urssaf|vigilance)/.test(s)) return "urssaf";
-    if (/(fiscal|fiscale|regularite|dgfip|impot|impots|tresor)/.test(s)) return "fiscale";
-    if (/(rc pro|rcpro|responsabilite|responsabilit|assurance|civile)/.test(s)) return "rcpro";
+    const a = (...ks: string[]) => ks.some((k) => s.includes(k));
+    if (a("kbis", "k bis", "extrait", "immatriculation", "rcs")) return "kbis";
+    if (a("urssaf", "vigilance")) return "urssaf";
+    if (a("fiscal", "regularite", "dgfip", "impot", "tresor")) return "fiscale";
+    if (a("rc pro", "rcpro", "responsabilit", "assurance", "civile")) return "rcpro";
     return null;
   };
   return parMots(n) || parMots(normalizeText(text).slice(0, 4000));
