@@ -30,6 +30,7 @@ type Action =
   | "importer_sheet"
   | "importer_liste"
   | "fusionner"
+  | "renommer"
   | "email_test";
 
 const ORDRE_STATUT = ["a_inviter", "en_attente", "recu_a_verifier", "recu_ok", "valide"];
@@ -254,6 +255,20 @@ export async function POST(req: NextRequest) {
       const recontroles = await recontrolerDossier(p, now);
       await writeDb(db);
       return NextResponse.json({ ok: true, recontroles, statut: p.statut });
+    }
+    case "renommer": {
+      const nouveauNom = String(body?.societe || "").trim();
+      if (!nouveauNom)
+        return NextResponse.json({ error: "Le nouveau nom est vide." }, { status: 400 });
+      p.societe = nouveauNom;
+      // Le nom sert de référence au fastcheck : on rejoue le contrôle sur les
+      // pièces déjà déposées pour rafraîchir le ⚠ immédiatement.
+      let recontroles = 0;
+      if (p.pieces && Object.keys(p.pieces).length > 0)
+        recontroles = await recontrolerDossier(p, now);
+      p.updatedAt = now;
+      await writeDb(db);
+      return NextResponse.json({ ok: true, societe: p.societe, recontroles, statut: p.statut });
     }
     default:
       return NextResponse.json({ error: "Action inconnue" }, { status: 400 });

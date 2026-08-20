@@ -132,6 +132,31 @@ export function AdminDashboard({
     }
   }
 
+  async function renommer(id: string, nom: string) {
+    const nouveau = nom.trim();
+    if (!nouveau) return;
+    setMessage("");
+    setEnCours(`${id}:renommer`);
+    try {
+      const res = await fetch("/api/admin/action", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, action: "renommer", societe: nouveau }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Renommage impossible");
+      setMessage(
+        `Dossier renommé en « ${data.societe} »` +
+          (data.recontroles ? ` — ${data.recontroles} pièce(s) recontrôlée(s).` : ".")
+      );
+      router.refresh();
+    } catch (e) {
+      setMessage(`★ ${e instanceof Error ? e.message : "Erreur"}`);
+    } finally {
+      setEnCours(null);
+    }
+  }
+
   async function ajouter(e: React.FormEvent) {
     e.preventDefault();
     setMessage("");
@@ -407,6 +432,7 @@ export function AdminDashboard({
                 basculer={() => setOuvert(ouvert === p.id ? null : p.id)}
                 action={action}
                 fusionner={fusionner}
+                renommer={renommer}
                 enCours={enCours}
               />
             ))}
@@ -424,6 +450,7 @@ function Ligne({
   basculer,
   action,
   fusionner,
+  renommer,
   enCours,
 }: {
   p: Prestataire;
@@ -432,9 +459,11 @@ function Ligne({
   basculer: () => void;
   action: (id: string, act: string, confirmation?: string) => Promise<void>;
   fusionner: (sourceId: string, cibleId: string) => Promise<void>;
+  renommer: (id: string, nom: string) => Promise<void>;
   enCours: string | null;
 }) {
   const [cible, setCible] = useState("");
+  const [nom, setNom] = useState(p.societe);
   const piecesRecues = DOC_KEYS.filter((k) => p.pieces?.[k]).length;
   const fastcheckOk = DOC_KEYS.every((k) => p.pieces?.[k]?.fastcheck.ok);
   const busy = (act: string) => enCours === `${p.id}:${act}`;
@@ -643,6 +672,28 @@ function Ligne({
                     Supprimer
                   </button>
                 </p>
+                <div className="mt-3 border-t border-black/10 pt-3">
+                  <div className="label">Renommer le dossier</div>
+                  <p className="mb-2 text-xs text-black/60">
+                    Aligne le nom sur celui qui figure sur les documents : le
+                    fastcheck compare ce nom au texte des pièces. Les pièces
+                    déjà déposées sont recontrôlées aussitôt.
+                  </p>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <input
+                      className="input w-auto max-w-[16rem] text-sm"
+                      value={nom}
+                      onChange={(e) => setNom(e.target.value)}
+                    />
+                    <button
+                      className="btn-outline btn-sm"
+                      disabled={!nom.trim() || nom.trim() === p.societe || busy("renommer")}
+                      onClick={() => renommer(p.id, nom)}
+                    >
+                      {busy("renommer") ? "…" : "Renommer"}
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-3 border-t border-black/10 pt-3">
                   <div className="label">Fusionner (doublon)</div>
                   <p className="mb-2 text-xs text-black/60">
