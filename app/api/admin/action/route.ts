@@ -9,11 +9,27 @@ import {
   tplTest,
   MAIL_FROM,
 } from "@/lib/mailer";
-import { DOC_KEYS, fastcheckGlobal, piecesCompletes, type Prestataire } from "@/lib/types";
-import { fastcheckPdf, normalizeText } from "@/lib/fastcheck";
+import { DOC_KEYS, fastcheckGlobal, piecesCompletes, type DocKey, type Prestataire } from "@/lib/types";
+import {
+  fastcheckPdf,
+  pdfText,
+  evaluer,
+  classifyDocType,
+  significantTokens,
+  normalizeText,
+} from "@/lib/fastcheck";
 import { matchPrestataire } from "@/lib/soumission";
-import { readLocalFile } from "@/lib/files";
-import { readInvitationRows, readDiffusionRows, ocrPdf } from "@/lib/google";
+import { readLocalFile, saveFile, slugify, isPdf } from "@/lib/files";
+import {
+  readInvitationRows,
+  readDiffusionRows,
+  ocrPdf,
+  isDriveConfigured,
+  driveFolderFor,
+  listDriveFolders,
+  listDriveFiles,
+  downloadDriveFile,
+} from "@/lib/google";
 
 export const runtime = "nodejs";
 export const maxDuration = 300;
@@ -31,9 +47,15 @@ type Action =
   | "importer_liste"
   | "fusionner"
   | "renommer"
+  | "sync_drive"
+  | "check_drive"
   | "email_test";
 
 const ORDRE_STATUT = ["a_inviter", "en_attente", "recu_a_verifier", "recu_ok", "valide"];
+
+/** Jour calendaire (Europe/Paris) d'une date ISO, pour comparer « même jour ». */
+const jourParis = (d: Date) =>
+  new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris" }).format(d);
 
 /** Rejoue le fastcheck sur les pièces déjà stockées d'un dossier (récupère le
  * fichier depuis le Blob/local). Retourne le nombre de pièces recontrôlées. */
@@ -73,6 +95,36 @@ export async function POST(req: NextRequest) {
     const to = String(body?.email || "").trim() || MAIL_FROM;
     const res = await sendMail({ to, ...tplTest() });
     return NextResponse.json({ ok: true, dryRun: res.dryRun, to });
+  }
+
+  if (action === "sync_drive") {
+    // Crée (ou relie) le dossier Drive de chaque prestataire qui n'en a pas.
+    // Relie d'abord les dossiers déjà présents (par nom), crée les manquants.
+    if (!isDriveConfigured())
+      return NextResponse.json({ error: "Google Drive non configuré." }, { status: 400 });
+    const existants = await listDriveFolders();
+    const parNom = new Map(existants.map((f) => [normalizeText(f.name), f]));
+    let crees = 0;
+    let lies = 0;
+    for (const p of db.prestataires) {
+      if (p.driveFolderId) continue;
+      const found = parNom.get(normalizeText(p.societe));
+      if (found) {
+        p.driveFolderId = found.id;
+        p.driveFolderUrl = `https://drive.google.com/drive/folders/${found.id}`;
+        lies++;
+      } else {
+        const folder = await driveFolderFor(p.societe);
+        if (!folder) continue;
+        p.driveFolderId = folder.id;
+        p.driveFolderUrl = folder.url;
+        parNom.set(normalizeText(p.societe), { id: folder.id, name: p.societe });
+        crees++;
+      }
+      p.updatedAt = now;
+    }
+    if (crees || lies) await writeDb(db);
+    return NextResponse.json({ ok: true, total: db.prestataires.length, crees, lies });
   }
 
   if (action === "importer_liste") {
@@ -172,9 +224,15 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "inviter_tous" || action === "relancer_tous") {
-    const cibles = db.prestataires.filter((p) =>
-      action === "inviter_tous" ? p.statut === "a_inviter" : p.statut === "en_attente"
-    );
+    const cibles = db.prestataires.filter((p) => {
+      if (action === "inviter_tous") return p.statut === "a_inviter";
+      if (p.statut !== "en_attente") return false;
+      // relancer_tous : saute ceux déjà relancés aujourd'hui (évite les doublons).
+      return !(
+        p.dateDerniereRelance &&
+        jourParis(new Date(p.dateDerniereRelance)) === jourParis(new Date(now))
+      );
+    });
     for (const p of cibles) {
       const tpl = action === "inviter_tous" ? tplInvitation(p) : tplRelance(p);
       await sendMail({ to: p.email, ...tpl });
@@ -201,6 +259,14 @@ export async function POST(req: NextRequest) {
       break;
     }
     case "relancer": {
+      if (
+        p.dateDerniereRelance &&
+        jourParis(new Date(p.dateDerniereRelance)) === jourParis(new Date(now))
+      )
+        return NextResponse.json(
+          { error: "Ce prestataire a déjà été relancé aujourd'hui." },
+          { status: 409 }
+        );
       await sendMail({ to: p.email, ...tplRelance(p) });
       p.dateDerniereRelance = now;
       break;
@@ -255,6 +321,76 @@ export async function POST(req: NextRequest) {
       const recontroles = await recontrolerDossier(p, now);
       await writeDb(db);
       return NextResponse.json({ ok: true, recontroles, statut: p.statut });
+    }
+    case "check_drive": {
+      // Lit les PDF déposés dans le dossier Drive du prestataire (pièces reçues
+      // par email et classées à la main), les classe par type, fait le
+      // fastcheck (avec OCR), et valide le dossier si les 4 pièces sont là et
+      // cohérentes. Cœur du flux « traitement des PJ hors formulaire ».
+      if (!isDriveConfigured())
+        return NextResponse.json({ error: "Google Drive non configuré." }, { status: 400 });
+      if (!p.driveFolderId) {
+        const folder = await driveFolderFor(p.societe);
+        if (!folder)
+          return NextResponse.json({ error: "Dossier Drive introuvable." }, { status: 400 });
+        p.driveFolderId = folder.id;
+        p.driveFolderUrl = folder.url;
+      }
+      const fichiers = await listDriveFiles(p.driveFolderId);
+      const pdfs = fichiers.filter(
+        (f) => f.mimeType === "application/pdf" || /\.pdf$/i.test(f.name)
+      );
+      p.pieces = p.pieces || {};
+      const tokens = significantTokens(p.societe);
+      const classes: string[] = [];
+      const nonClasses: string[] = [];
+      const prises = new Set<DocKey>();
+      for (const f of pdfs) {
+        const buf = await downloadDriveFile(f.id);
+        if (!isPdf(buf)) {
+          nonClasses.push(`${f.name} (pas un PDF)`);
+          continue;
+        }
+        const { text, viaOcr } = await pdfText(buf, ocrPdf);
+        const key = classifyDocType(f.name, text);
+        if (!key) {
+          nonClasses.push(`${f.name} (type indéterminé)`);
+          continue;
+        }
+        if (prises.has(key)) {
+          nonClasses.push(`${f.name} (déjà un ${key})`);
+          continue;
+        }
+        const fastcheck = evaluer(text, tokens);
+        if (viaOcr) fastcheck.viaOcr = true;
+        const saved = await saveFile(`${slugify(p.societe)}/${key}.pdf`, buf, "application/pdf");
+        p.pieces[key] = {
+          originalName: f.name,
+          path: saved.path,
+          url: saved.url,
+          size: buf.length,
+          uploadedAt: now,
+          fastcheck,
+        };
+        prises.add(key);
+        classes.push(`${key} ${fastcheck.ok ? "✓" : "⚠"}`);
+      }
+      if (piecesCompletes(p)) {
+        p.statut = fastcheckGlobal(p) ? "valide" : "recu_a_verifier";
+      } else if (prises.size > 0 && p.statut === "en_attente") {
+        p.statut = "recu_a_verifier";
+      }
+      if (prises.size > 0 && !p.dateSoumission) p.dateSoumission = now;
+      p.updatedAt = now;
+      await writeDb(db);
+      return NextResponse.json({
+        ok: true,
+        total: pdfs.length,
+        classes,
+        nonClasses,
+        complete: piecesCompletes(p),
+        statut: p.statut,
+      });
     }
     case "renommer": {
       const nouveauNom = String(body?.societe || "").trim();

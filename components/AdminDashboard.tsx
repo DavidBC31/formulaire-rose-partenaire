@@ -43,6 +43,7 @@ export function AdminDashboard({
   const [bulk, setBulk] = useState("");
   const [message, setMessage] = useState("");
   const [enCours, setEnCours] = useState<string | null>(null);
+  const [relances, setRelances] = useState<Record<string, string>>({});
 
   const stats = useMemo(() => {
     const s = { total: prestataires.length, attente: 0, recus: 0, valides: 0, attestes: 0 };
@@ -76,6 +77,8 @@ export function AdminDashboard({
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Action impossible");
+      if (act === "relancer" && id)
+        setRelances((r) => ({ ...r, [id]: new Date().toISOString() }));
       if (act === "email_test")
         setMessage(
           data.dryRun
@@ -94,6 +97,21 @@ export function AdminDashboard({
         );
       else if (act === "recontroler_tous")
         setMessage(`Recontrôle terminé : ${data.pieces} pièce(s) sur ${data.dossiers} dossier(s).`);
+      else if (act === "sync_drive")
+        setMessage(
+          `Dossiers Drive : ${data.crees} créé(s), ${data.lies} relié(s) (sur ${data.total}).`
+        );
+      else if (act === "check_drive")
+        setMessage(
+          data.total === 0
+            ? "Aucun PDF dans le dossier Drive de ce prestataire."
+            : `Drive : ${data.classes.length} pièce(s) classée(s)` +
+                (data.classes.length ? ` [${data.classes.join(", ")}]` : "") +
+                `. Statut : ${STATUT_LABELS[data.statut as Statut]}.` +
+                (data.nonClasses.length
+                  ? ` Non classé(s) : ${data.nonClasses.join(" ; ")}.`
+                  : "")
+        );
       else if (typeof data.traites === "number")
         setMessage(`${data.traites} email(s) envoyé(s).`);
       router.refresh();
@@ -294,6 +312,21 @@ export function AdminDashboard({
         >
           ↻ Relancer tous
         </button>
+        {driveConfigured && (
+          <button
+            className="btn-outline btn-sm"
+            disabled={enCours === "null:sync_drive"}
+            onClick={() =>
+              action(
+                null,
+                "sync_drive",
+                "Créer/relier le dossier Drive de chaque prestataire qui n'en a pas encore ?"
+              )
+            }
+          >
+            {enCours === "null:sync_drive" ? "Création…" : "📁 Créer les dossiers Drive"}
+          </button>
+        )}
         <button
           className="btn-outline btn-sm"
           disabled={enCours === "null:recontroler_tous"}
@@ -434,6 +467,8 @@ export function AdminDashboard({
                 fusionner={fusionner}
                 renommer={renommer}
                 enCours={enCours}
+                relanceOverride={relances[p.id]}
+                driveConfigured={driveConfigured}
               />
             ))}
           </tbody>
@@ -452,6 +487,8 @@ function Ligne({
   fusionner,
   renommer,
   enCours,
+  relanceOverride,
+  driveConfigured,
 }: {
   p: Prestataire;
   autres: Prestataire[];
@@ -461,9 +498,16 @@ function Ligne({
   fusionner: (sourceId: string, cibleId: string) => Promise<void>;
   renommer: (id: string, nom: string) => Promise<void>;
   enCours: string | null;
+  relanceOverride?: string;
+  driveConfigured: boolean;
 }) {
   const [cible, setCible] = useState("");
   const [nom, setNom] = useState(p.societe);
+  const dRelance = [p.dateDerniereRelance, relanceOverride]
+    .filter(Boolean)
+    .sort()
+    .at(-1) as string | undefined;
+  const relanceAujourdhui = estAujourdhui(dRelance);
   const piecesRecues = DOC_KEYS.filter((k) => p.pieces?.[k]).length;
   const fastcheckOk = DOC_KEYS.every((k) => p.pieces?.[k]?.fastcheck.ok);
   const busy = (act: string) => enCours === `${p.id}:${act}`;
@@ -491,7 +535,7 @@ function Ligne({
             </div>
           )}
         </td>
-        <td className="px-3 py-2">{fmt(p.dateDerniereRelance)}</td>
+        <td className="px-3 py-2">{fmt(dRelance)}</td>
         <td className="px-3 py-2">
           {piecesRecues === 0 ? (
             "—"
@@ -512,8 +556,13 @@ function Ligne({
               </button>
             )}
             {p.statut === "en_attente" && (
-              <button className="btn-outline btn-sm" disabled={busy("relancer")} onClick={() => action(p.id, "relancer")}>
-                ↻ Relancer
+              <button
+                className="btn-outline btn-sm"
+                disabled={busy("relancer") || relanceAujourdhui}
+                title={relanceAujourdhui ? "Déjà relancé aujourd'hui" : undefined}
+                onClick={() => action(p.id, "relancer")}
+              >
+                {relanceAujourdhui ? "↻ Relancé ce jour" : "↻ Relancer"}
               </button>
             )}
             {["recu_ok", "recu_a_verifier"].includes(p.statut) && (
@@ -672,6 +721,32 @@ function Ligne({
                     Supprimer
                   </button>
                 </p>
+                {driveConfigured && (
+                  <p className="mt-2 flex flex-wrap items-center gap-2">
+                    {p.driveFolderUrl ? (
+                      <a
+                        className="btn-outline btn-sm"
+                        href={p.driveFolderUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        📁 Ouvrir le dossier Drive
+                      </a>
+                    ) : (
+                      <span className="text-xs text-black/50">
+                        Pas encore de dossier Drive — bouton « 📁 Créer les dossiers Drive ».
+                      </span>
+                    )}
+                    <button
+                      className="btn-outline btn-sm"
+                      disabled={busy("check_drive")}
+                      title="Lit les PDF déposés dans le dossier Drive, les contrôle et valide le dossier si tout est bon"
+                      onClick={() => action(p.id, "check_drive")}
+                    >
+                      {busy("check_drive") ? "Lecture…" : "✅ Check (Drive)"}
+                    </button>
+                  </p>
+                )}
                 <div className="mt-3 border-t border-black/10 pt-3">
                   <div className="label">Renommer le dossier</div>
                   <p className="mb-2 text-xs text-black/60">
@@ -731,6 +806,11 @@ function Ligne({
       )}
     </>
   );
+}
+
+const jourFr = new Intl.DateTimeFormat("fr-CA", { timeZone: "Europe/Paris" });
+function estAujourdhui(iso?: string): boolean {
+  return !!iso && jourFr.format(new Date(iso)) === jourFr.format(new Date());
 }
 
 const fmtLong = new Intl.DateTimeFormat("fr-FR", { dateStyle: "short" });

@@ -1,4 +1,4 @@
-import type { FastcheckResult } from "./types";
+import { DOC_KEYS, type DocKey, type FastcheckResult } from "./types";
 
 /**
  * Fastcheck : vérifie que le nom du prestataire figure bien dans le texte
@@ -62,7 +62,7 @@ export function extraireDates(raw: string): number[] {
 }
 
 /** Évalue nom + date à partir d'un texte de document déjà extrait. */
-function evaluer(raw: string, tokens: string[]): FastcheckResult {
+export function evaluer(raw: string, tokens: string[]): FastcheckResult {
   const text = normalizeText(raw);
   // PDF scanné / illisible : pas de texte exploitable.
   if (text.length < 20) {
@@ -122,16 +122,14 @@ function evaluer(raw: string, tokens: string[]): FastcheckResult {
 }
 
 /**
- * Fastcheck (nom + date). `ocr` optionnel : si le PDF a peu de texte (scanné),
- * on tente une lecture OCR et on garde le meilleur résultat. L'OCR est lent,
- * donc réservé au recontrôle admin — jamais au dépôt du prestataire.
+ * Extrait le texte d'un PDF, avec repli OCR (`ocr` optionnel) si le PDF a peu
+ * de texte (scanné). L'OCR est lent, donc réservé au recontrôle/check admin —
+ * jamais au dépôt du prestataire.
  */
-export async function fastcheckPdf(
+export async function pdfText(
   buffer: Buffer,
-  societe: string,
   ocr?: (buf: Buffer) => Promise<string>
-): Promise<FastcheckResult> {
-  const tokens = significantTokens(societe);
+): Promise<{ text: string; viaOcr: boolean }> {
   let raw = "";
   try {
     const { PDFParse } = await import("pdf-parse");
@@ -144,21 +142,47 @@ export async function fastcheckPdf(
   } catch (e) {
     console.error("[FASTCHECK] extraction du texte PDF impossible :", e);
   }
-
-  let res = evaluer(raw, tokens);
-
   // Repli OCR : texte trop court (PDF image/scanné) → on tente Google Drive OCR.
   if (ocr && raw.trim().length < 400) {
     try {
       const ocrText = await ocr(buffer);
-      if (ocrText && ocrText.trim().length > raw.trim().length) {
-        const res2 = evaluer(ocrText, tokens);
-        res2.viaOcr = true;
-        res = res2;
-      }
+      if (ocrText && ocrText.trim().length > raw.trim().length)
+        return { text: ocrText, viaOcr: true };
     } catch (e) {
       console.error("[FASTCHECK] OCR impossible :", e);
     }
   }
+  return { text: raw, viaOcr: false };
+}
+
+export async function fastcheckPdf(
+  buffer: Buffer,
+  societe: string,
+  ocr?: (buf: Buffer) => Promise<string>
+): Promise<FastcheckResult> {
+  const { text, viaOcr } = await pdfText(buffer, ocr);
+  const res = evaluer(text, significantTokens(societe));
+  if (viaOcr) res.viaOcr = true;
   return res;
+}
+
+/**
+ * Devine le type d'une pièce (kbis/urssaf/fiscale/rcpro) d'après le nom du
+ * fichier, puis à défaut d'après le contenu texte. Sert au dépôt de pièces
+ * reçues par email et classées à la main dans le dossier Drive du prestataire.
+ * Retourne null si indéterminé (le fichier est alors signalé « non classé »).
+ */
+export function classifyDocType(fileName: string, text = ""): DocKey | null {
+  const n = normalizeText(fileName);
+  // Noms miroir du formulaire : kbis.pdf, urssaf.pdf, fiscale.pdf, rcpro.pdf.
+  for (const k of DOC_KEYS) if (n === k || n.startsWith(k + " ")) return k;
+  const parMots = (s: string): DocKey | null => {
+    if (!s) return null;
+    if (/(kbis|k bis|extrait|immatriculation|rcs)/.test(s)) return "kbis";
+    if (/(urssaf|vigilance)/.test(s)) return "urssaf";
+    if (/(fiscal|fiscale|regularite|dgfip|impot|impots|tresor)/.test(s)) return "fiscale";
+    if (/(rc pro|rcpro|responsabilite|responsabilit|assurance|civile)/.test(s)) return "rcpro";
+    return null;
+  };
+  return parMots(n) || parMots(normalizeText(text).slice(0, 4000));
 }

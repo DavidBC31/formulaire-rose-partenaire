@@ -185,6 +185,60 @@ async function ensureDriveFolder(nom: string): Promise<{ id: string; url: string
   return { id, url: `https://drive.google.com/drive/folders/${id}` };
 }
 
+/** Liste les sous-dossiers (prestataires) du dossier racine dédié. */
+export async function listDriveFolders(): Promise<{ id: string; name: string }[]> {
+  if (!isDriveConfigured()) return [];
+  const root = process.env.GOOGLE_DRIVE_FOLDER_ID!;
+  const q = encodeURIComponent(
+    `'${root}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`
+  );
+  const out: { id: string; name: string }[] = [];
+  let pageToken = "";
+  do {
+    const url =
+      `https://www.googleapis.com/drive/v3/files?q=${q}` +
+      `&fields=nextPageToken,files(id,name)&pageSize=1000` +
+      `&supportsAllDrives=true&includeItemsFromAllDrives=true` +
+      (pageToken ? `&pageToken=${pageToken}` : "");
+    const data = await (await gfetch(url)).json();
+    for (const f of data.files || []) out.push({ id: f.id, name: f.name });
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return out;
+}
+
+/** Liste les fichiers (hors sous-dossiers) d'un dossier Drive. */
+export async function listDriveFiles(
+  folderId: string
+): Promise<{ id: string; name: string; mimeType: string }[]> {
+  if (!isDriveConfigured()) return [];
+  const q = encodeURIComponent(
+    `'${folderId}' in parents and mimeType != 'application/vnd.google-apps.folder' and trashed = false`
+  );
+  const out: { id: string; name: string; mimeType: string }[] = [];
+  let pageToken = "";
+  do {
+    const url =
+      `https://www.googleapis.com/drive/v3/files?q=${q}` +
+      `&fields=nextPageToken,files(id,name,mimeType)&pageSize=1000` +
+      `&supportsAllDrives=true&includeItemsFromAllDrives=true` +
+      (pageToken ? `&pageToken=${pageToken}` : "");
+    const data = await (await gfetch(url)).json();
+    for (const f of data.files || [])
+      out.push({ id: f.id, name: f.name, mimeType: f.mimeType });
+    pageToken = data.nextPageToken || "";
+  } while (pageToken);
+  return out;
+}
+
+/** Télécharge le contenu binaire d'un fichier Drive. */
+export async function downloadDriveFile(fileId: string): Promise<Buffer> {
+  const res = await gfetch(
+    `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media&supportsAllDrives=true`
+  );
+  return Buffer.from(await res.arrayBuffer());
+}
+
 /** Dépose (ou remplace) un fichier dans un dossier Drive. */
 export async function uploadToDrive(
   folderId: string,
