@@ -12,6 +12,14 @@ const SEPT_JOURS_MOINS_MARGE = 6 * 24 * 60 * 60 * 1000; // ≥ 6 jours : évite 
  * jusqu'à réception des pièces). Déclenché par le cron Vercel — voir vercel.json.
  */
 export async function GET(req: NextRequest) {
+  // Relances automatiques DÉSACTIVÉES : l'événement (Rose Festival, fin
+  // août 2026) est passé. Le cron a été retiré de vercel.json ; ce garde-fou
+  // neutralise aussi tout appel manuel de l'endpoint. Pour réactiver :
+  // définir la variable d'environnement RELANCES_ACTIVES=1.
+  if (process.env.RELANCES_ACTIVES !== "1") {
+    return NextResponse.json({ ok: true, disabled: true, relances: 0 });
+  }
+
   const secret = process.env.CRON_SECRET;
   if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) {
     return NextResponse.json({ error: "Non autorisé" }, { status: 401 });

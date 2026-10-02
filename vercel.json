@@ -1,8 +1,3 @@
 {
-  "crons": [
-    {
-      "path": "/api/cron/relances",
-      "schedule": "0 7 * * 1"
-    }
-  ]
+  "crons": []
 }
